@@ -75,33 +75,86 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:background="?attr/colorSurface"
-        android:padding="10dp"
-        android:gravity="center_vertical">
+        android:padding="10dp">
 
-        <EditText
-            android:id="@+id/chatInput"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:hint="问我任何关于你行为/消费的问题…"
-            android:textSize="14sp"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_3"
-            android:background="@drawable/bubble_ai"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:maxLines="1"
-            android:inputType="text" />
+        <!-- 待发送的图片（默认隐藏）：带图问 = 视觉模型看，纯文字问 = 文本模型答 -->
+        <LinearLayout
+            android:id="@+id/attachBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
 
-        <Button
-            android:id="@+id/btnSend"
-            style="@style/Widget.Trace.Button.Primary"
-            android:layout_width="wrap_content"
-            android:layout_height="46dp"
-            android:text="发送"
-            android:layout_marginStart="8dp" />
+            <ImageView
+                android:id="@+id/attachThumb"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_inset"
+                android:scaleType="centerCrop"
+                android:contentDescription="待发送的图片" />
+
+            <TextView
+                android:id="@+id/attachHint"
+                style="@style/Text.Trace.Meta"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:text="带图提问会交给视觉模型看图（数据不出手机）" />
+
+            <Button
+                android:id="@+id/btnAttachClear"
+                style="@style/Widget.Trace.Button.Tonal"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:minWidth="0dp"
+                android:text="✕" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btnAttach"
+                style="@style/Widget.Trace.Button.Tonal"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:minWidth="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="🖼" />
+
+            <EditText
+                android:id="@+id/chatInput"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:hint="问我任何关于你行为/消费的问题…（可带一张图）"
+                android:textSize="14sp"
+                android:textColor="@color/text"
+                android:textColorHint="@color/text_3"
+                android:background="@drawable/bubble_ai"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:maxLines="1"
+                android:inputType="text" />
+
+            <Button
+                android:id="@+id/btnSend"
+                style="@style/Widget.Trace.Button.Primary"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="发送"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <include layout="@layout/view_bottom_nav" />

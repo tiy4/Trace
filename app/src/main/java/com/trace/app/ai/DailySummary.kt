@@ -424,8 +424,11 @@ object DailySummary {
         val one = if (oneRaw.isNotBlank() && oneRaw.length <= 60 &&
             looksClean(oneRaw) && !echoesFact(oneRaw, facts) && grounded(oneRaw, appNames)
         ) oneRaw else ""
+        // 建议这一侧**不能**用 grounded：建议天然是「明天怎样」，本来就未必出现今天的行为词，
+        // 实测把「早睡前尝试放下手机」这类正常建议全滤掉了。这里只拦两件真事：
+        // 抄事实段 / 编出今天没有的钱（早期编过「128 元」）。
         val advice = if (adviceRaw.isNotBlank() && adviceRaw.length <= 80 &&
-            looksClean(adviceRaw) && !echoesFact(adviceRaw, facts) && grounded(adviceRaw, appNames)
+            looksClean(adviceRaw) && !echoesFact(adviceRaw, facts) && !inventsMoney(adviceRaw, facts)
         ) adviceRaw else ""
 
         val lines = mutableListOf(facts)
@@ -485,6 +488,11 @@ object DailySummary {
      */
     private fun grounded(s: String, appNames: List<String>): Boolean =
         (appNames + BEHAVIOR_WORDS).any { it.length >= 2 && s.contains(it) }
+
+    /** 今天没有钱的记录时，建议里就不该冒出金额（实测编过「晚上 10 点那笔 128 元」）。 */
+    private fun inventsMoney(s: String, facts: String): Boolean =
+        (s.contains("元") || s.contains("块") || s.contains("¥")) &&
+            !(facts.contains("元") || facts.contains("¥"))
 
     private val BEHAVIOR_WORDS = listOf(
         "屏幕时间", "短视频", "视频", "点赞", "收藏", "取消点赞", "凌晨", "深夜", "上午", "下午",

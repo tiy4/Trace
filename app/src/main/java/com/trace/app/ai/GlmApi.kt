@@ -1,5 +1,6 @@
 package com.trace.app.ai
 
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -16,7 +17,11 @@ object GlmApi {
 
     private const val BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
-    data class Message(val role: String, val content: String)
+    /**
+     * 一条消息。[imageJpeg] 不为空时按视觉格式发（content 变成
+     * `[{type:image_url,...},{type:text,...}]`），只有 glm-4v-flash 这类视觉模型认。
+     */
+    data class Message(val role: String, val content: String, val imageJpeg: ByteArray? = null)
 
     /** 同步调用，必须在后台线程执行。返回模型回复文本；失败抛异常带原因。 */
     fun chat(apiKey: String, model: String, messages: List<Message>): String {
@@ -26,7 +31,7 @@ object GlmApi {
                 messages.forEach { m ->
                     put(JSONObject().apply {
                         put("role", m.role)
-                        put("content", m.content)
+                        put("content", contentOf(m))
                     })
                 }
             })
@@ -62,6 +67,23 @@ object GlmApi {
                 .getString("content")
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /** 纯文本 → 字符串；带图 → OpenAI 视觉格式的 content 数组。 */
+    private fun contentOf(m: Message): Any {
+        val img = m.imageJpeg ?: return m.content
+        return JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "image_url")
+                put("image_url", JSONObject().put(
+                    "url", "data:image/jpeg;base64," + Base64.encodeToString(img, Base64.NO_WRAP)
+                ))
+            })
+            put(JSONObject().apply {
+                put("type", "text")
+                put("text", m.content)
+            })
         }
     }
 }

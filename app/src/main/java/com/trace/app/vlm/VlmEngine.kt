@@ -71,6 +71,16 @@ object VlmEngine {
             "说人话、给出具体数字和时间、不要编造；数据不够就直说不知道。" +
             "回答控制在 200 字以内，不要用 Markdown 标题。\n\n"
 
+    /**
+     * 助手「带图提问」的指令。
+     *
+     * 与 [INSTRUCTION] 分开是有意的：那条是**屏幕理解**的口径（"描述屏幕上正在发生什么"），
+     * 用户发一张自己的照片问问题时套那条会答非所问。这里只要求"看着图回答用户"。
+     */
+    private const val VISUAL_CHAT_INSTRUCTION =
+        "你是「Trace」这个 Android App 内置的助手。用户发来一张图片并提问，请只依据图片里真实可见的内容用中文回答：" +
+            "说人话、能读到数字或文字就写出来、不要编造；图片里看不出来的就直说看不出来。回答控制在 200 字以内。\n\n"
+
     /** 等待 native 库异步加载完成的上限。 */
     private const val INIT_TIMEOUT_MS = 20_000L
 
@@ -151,6 +161,9 @@ object VlmEngine {
         jpeg: ByteArray,
         slice: Int = AdaptiveSlice.USER,
         prompt: String = DEFAULT_PROMPT,
+        maxTokens: Int = 0,
+        instruction: String = INSTRUCTION,
+        onToken: (String) -> Unit = {},
     ): VlmResult {
         val s = AdaptiveSlice.clamp(slice)
         if (!gate.tryLock()) {
@@ -177,7 +190,16 @@ object VlmEngine {
 
             val sb = StringBuilder()
             val t2 = System.currentTimeMillis()
-            e.sendUserPrompt(INSTRUCTION + prompt).collect { token -> sb.append(token) }
+            // maxTokens<=0 → 走 native 默认长度，保持屏幕理解原有行为一字不变
+            val flow =
+                if (maxTokens > 0) e.sendUserPrompt(instruction + prompt, maxTokens)
+                else e.sendUserPrompt(instruction + prompt)
+            flow.collect { token ->
+                if (token.isNotEmpty()) {
+                    sb.append(token)
+                    onToken(token)
+                }
+            }
             genMs = System.currentTimeMillis() - t2
             val answer = sb.toString().trim()
 
@@ -236,7 +258,11 @@ object VlmEngine {
 
             val sb = StringBuilder()
             val t2 = System.currentTimeMillis()
-            e.sendUserPrompt(instruction + prompt, maxTokens).collect { tok ->
+            // Qwen3 系列默认先吐一大段思考（慢、对总结/问答没价值），用它自己的 soft switch 关掉。
+            val body =
+                if (chat.id.startsWith("qwen3")) instruction + prompt + " /no_think"
+                else instruction + prompt
+            e.sendUserPrompt(body, maxTokens).collect { tok ->
                 if (tok.isNotEmpty()) {
                     sb.append(tok)
                     onToken(tok)
@@ -343,6 +369,37 @@ object VlmEngine {
      * 所以这里兜一层：成对出现的整段删掉；**只开不闭**（token 用光还在想）则整条丢弃，
      * 因为剩下的半截思考过程不是答案。
      */
+    /**
+     * 助手入口：**按用户给的数据分工**。
+     *
+     * - 带图 → 视觉模型（走 [analyze]：先 prefill 图，再读用户问题），因为只有它长了眼睛；
+     * - 纯文字 → 文本模型（走 [ask]），快得多、写中文也更稳。
+     *
+     * 代价要说清楚：一个 `LlamaEngine` 只能装一份权重，所以「发一张图、再问一句纯文字」
+     * 会**来回换模型**（视觉 ~1.3 s、文本 2.9-4.1 s 冷加载）。正在跑屏幕理解时拿不到锁，
+     * 返回 `ok=false, error="busy"`，由调用方提示稍后重试。
+     */
+    suspend fun assistant(
+        ctx: Context,
+        question: String,
+        jpeg: ByteArray? = null,
+        maxTokens: Int = CHAT_MAX_TOKENS,
+        onToken: (String) -> Unit = {},
+    ): VlmResult =
+        if (jpeg == null) {
+            ask(ctx, question, maxTokens, onToken = onToken)
+        } else {
+            analyze(
+                ctx = ctx,
+                jpeg = jpeg,
+                slice = AdaptiveSlice.USER,
+                prompt = question,
+                maxTokens = maxTokens,
+                instruction = VISUAL_CHAT_INSTRUCTION,
+                onToken = onToken,
+            )
+        }
+
     private fun stripThinking(raw: String): String {
         val s = raw.trim()
         val open = s.indexOf(" thinking")
