@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Trace</string>
+
+    <!-- 无障碍截屏服务 -->
+    <string name="a11y_label">Trace 屏幕理解（截屏）</string>
+    <string name="a11y_summary">给端侧读屏提供整屏截图，开一次长期有效</string>
+    <string name="a11y_desc">开启后 Trace 可以在后台截取整屏画面，交给手机本地的 MiniCPM-V 模型理解屏幕内容。不开这个开关，就只能每次手动授权投屏，且本机弹窗默认只共享单个应用。截图只在本机内存与数据库中流转，不会上传。</string>
+</resources>

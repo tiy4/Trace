@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  暗色模式（本机系统即暗色，所以这份是实际生效的）。
+  只覆盖语义名；原始色阶保持品牌一致性（主色在暗底上略微提亮以便对比）。
+-->
+<resources>
+    <color name="brand_500">#6E72E2</color>
+    <color name="brand_600">#5B5FCF</color>
+    <color name="brand_container">#232752</color>
+    <color name="on_brand_container">#C9CCFF</color>
+    <color name="on_brand">#FFFFFF</color>
+
+    <color name="amber_500">#FFC24D</color>
+    <color name="amber_container">#3A2A08</color>
+    <color name="on_amber_container">#FFD79A</color>
+
+    <color name="green">#4ADE80</color>
+    <color name="red">#F87171</color>
+
+    <color name="bg">#0F1116</color>
+    <color name="surface">#171A22</color>
+    <color name="surface_variant">#1E2230</color>
+    <color name="outline">#2B3040</color>
+
+    <color name="text">#E9EBF2</color>
+    <color name="text_2">#9AA2B2</color>
+    <color name="text_3">#6E7789</color>
+
+    <color name="purple_500">#5B5FCF</color>
+</resources>

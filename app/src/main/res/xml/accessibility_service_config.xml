@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  无障碍服务配置。
+
+  两个能力：
+   1. canTakeScreenshot —— 整屏截图（API 30+），开一次长期有效。
+      为什么不用 MediaProjection：投屏授权每次进程重启都要重新点一遍，而且 vivo
+      上弹窗默认是「共享一个应用」，还得手动切「共享整个屏幕」，自动截屏没法无人值守。
+   2. canRetrieveWindowContent —— 读当前窗口的 content-desc / text。
+      **实测（2026-10-07，抖音）**：内容流应用在系统侧完全看不到「应用内切换」
+      （topResumedActivity 恒为 .splash.SplashActivity，滑动换视频没有任何
+      ACTIVITY_RESUMED），只能靠界面语义。抖音暂停时的树里有：
+        「未点赞，喜欢2597，按钮」「未选中，收藏348，按钮」+ 视频文案 + 作者
+      —— 点赞/收藏能精确判定，比视觉判图准，而且零模型成本。
+      代价（用户已知情并确认）：服务因此具备读取界面内容的能力。
+
+  不做自动点击（无 canPerformGestures），不请求过滤按键。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/a11y_desc"
+    android:notificationTimeout="200"
+    android:summary="@string/a11y_summary" />

@@ -1,0 +1,22 @@
+# Gradle / Android 构建产物
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.ap_
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 运行期产物：数据库 / 关键帧 / 模型权重，一律不入库
+*.db
+*.db-journal
+*.db-wal
+*.gguf
+frames/

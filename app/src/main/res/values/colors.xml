@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  色板（亮色）。
+  命名分两层：
+    · 原始色阶 brand_500 / amber_500 …
+    · 语义角色 surface / text / outline …（暗色由 values-night/colors.xml 覆盖同名项）
+  UI 一律引用语义名，不要直接写颜色字面量——否则暗色模式下会出现「白底白字」。
+-->
+<resources>
+    <!-- 品牌 -->
+    <color name="brand_500">#5B5FCF</color>
+    <color name="brand_600">#4A4EB8</color>
+    <color name="brand_container">#E7E9FF</color>
+    <color name="on_brand_container">#2A2E85</color>
+    <color name="on_brand">#FFFFFF</color>
+
+    <!-- 强调（深夜冲动 / 提醒） -->
+    <color name="amber_500">#F59E0B</color>
+    <color name="amber_container">#FFF0D6</color>
+    <color name="on_amber_container">#8A5300</color>
+
+    <!-- 状态 -->
+    <color name="green">#15A34A</color>
+    <color name="red">#DC2626</color>
+
+    <!-- 语义：背景与容器 -->
+    <color name="bg">#F4F5F9</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#F2F3F9</color>
+    <color name="outline">#E4E6EF</color>
+
+    <!-- 语义：文字 -->
+    <color name="text">#15171E</color>
+    <color name="text_2">#646B79</color>
+    <color name="text_3">#98A0AE</color>
+
+    <!-- 兼容旧引用 -->
+    <color name="purple_500">#5B5FCF</color>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 卡片底：跟随主题（亮=白 / 暗=深灰）。新布局已改用 MaterialCardView + Widget.Trace.Card，
+     这里保留给旧引用兜底。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/surface"/>
+    <corners android:radius="18dp"/>
+</shape>

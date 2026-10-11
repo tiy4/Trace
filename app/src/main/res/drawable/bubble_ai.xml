@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 气泡 / 输入框底：用 surface，暗色下自动变深灰，配 @color/text 的字才读得出来。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/surface"/>
+    <corners android:radius="16dp" android:topLeftRadius="4dp"/>
+</shape>

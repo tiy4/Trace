@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  首页。设计约束（改之前先读）：
+    · 所有 android:id 都被 MainActivity.kt 用 findViewById 引用，重排可以，改名不行。
+      swVlm 必须是 <Switch>（Kotlin 里是 findViewById<Switch>，换 MaterialSwitch 会 ClassCastException）。
+    · 颜色/字号一律引用 style 或 @color 语义色，不要写死色值——本机系统是暗色，
+      写死 #FFFFFF / #1A1A1A 就会出现白底白字。
+    · 根布局 fitsSystemWindows="true" 负责让开状态栏/手势条（targetSdk 35 强制边到边，
+      旧版内容会被状态栏压住），内层的 padding 写在子 LinearLayout 上，别写在这层（会被 insets 覆盖）。
+    · 标题栏由本布局自绘：主题已换成 NoActionBar（旧版 ActionBar 在暗色系统下是一条近黑色横条）。
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="false"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="28dp">
+
+        <!-- ===== 标题栏 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Trace"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.01"
+                    android:textColor="@color/text" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="行为 × 消费 · 端侧理解"
+                    android:textSize="11sp"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_3" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="截图不出手机"
+                android:textSize="10.5sp"
+                android:textColor="@color/on_brand_container"
+                android:background="@drawable/chip_brand"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp" />
+        </LinearLayout>
+
+        <!-- ===== 总览 ===== -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Trace.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="bottom">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            style="@style/Text.Trace.Meta"
+                            android:text="总额"
+                            android:textColor="@color/text_3" />
+
+                        <TextView
+                            android:id="@+id/tvTotalAmount"
+                            style="@style/Text.Trace.Metric"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="¥ 0.00"
+                            android:layout_marginTop="2dp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvNightCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="深夜冲动 0 笔"
+                        android:textSize="11sp"
+                        android:textColor="@color/on_amber_container"
+                        android:background="@drawable/chip_amber"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@color/outline" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        style="@style/Text.Trace.Meta"
+                        android:text="笔数"
+                        android:textColor="@color/text_3" />
+
+                    <TextView
+                        android:id="@+id/tvTotalCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="共 0 笔"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 关联洞察 ===== -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Trace.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    style="@style/Text.Trace.Section"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🪞  关联洞察" />
+
+                <TextView
+                    android:id="@+id/tvReport"
+                    style="@style/Text.Trace.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="加载中…"
+                    android:layout_marginTop="10dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== AI 行为监控 ===== -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Trace.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    style="@style/Text.Trace.Section"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🤖  AI 行为监控" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/panel_inset"
+                    android:padding="12dp"
+                    android:layout_marginTop="10dp">
+
+                    <TextView
+                        android:id="@+id/tvMonitorStatus"
+                        style="@style/Text.Trace.Readout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="监控未开启 · 记录应用使用行为供 AI 分析" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnMonitor"
+                    style="@style/Widget.Trace.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="▶ 开启行为监控"
+                    android:layout_marginTop="14dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 端侧屏幕理解（VLM） ===== -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Trace.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    style="@style/Text.Trace.Section"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🧠  端侧屏幕理解" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/panel_inset"
+                    android:padding="12dp"
+                    android:layout_marginTop="10dp">
+
+                    <TextView
+                        android:id="@+id/tvVlmStatus"
+                        style="@style/Text.Trace.Readout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="未开启 · 本地模型直接读屏，截屏不出手机" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="14dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="事件触发截屏理解"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="换内容 / 点赞 / 收藏 时自动截一帧"
+                            android:textSize="11sp"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_3" />
+                    </LinearLayout>
+
+                    <Switch
+                        android:id="@+id/swVlm"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:thumbTint="@color/switch_thumb"
+                        android:trackTint="@color/switch_track" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnVlmA11y"
+                    style="@style/Widget.Trace.Button.Tonal"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="开启无障碍截屏（推荐）"
+                    android:layout_marginTop="14dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+
+                    <Button
+                        android:id="@+id/btnVlmBatch"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="批量分析" />
+
+                    <Button
+                        android:id="@+id/btnVlmArchive"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="仅存档：关"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+
+                    <Button
+                        android:id="@+id/btnVlmNow"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="分析当前屏" />
+
+                    <Button
+                        android:id="@+id/btnVlmLog"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="记录"
+                        android:layout_marginStart="8dp" />
+
+                    <Button
+                        android:id="@+id/btnVlmUnload"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="释放模型"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Text.Trace.Caption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="仅存档＝只留关键帧、不跑模型（适合熄屏/充电时再批量分析）；批量分析＝按约 10 秒/帧串行处理积压帧。" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ===== 底部动作 ===== -->
+        <Button
+            android:id="@+id/btnAdd"
+            style="@style/Widget.Trace.Button.Primary"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="记一笔" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp">
+
+            <Button
+                android:id="@+id/btnRecords"
+                style="@style/Widget.Trace.Button.Tonal"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:text="流水" />
+
+            <Button
+                android:id="@+id/btnBehavior"
+                style="@style/Widget.Trace.Button.Tonal"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:text="行为"
+                android:layout_marginStart="8dp" />
+
+            <Button
+                android:id="@+id/btnChat"
+                style="@style/Widget.Trace.Button.Tonal"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:text="AI 助手"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Text.Trace.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:textColor="@color/text_3"
+            android:text="📦 数据查询：adb shell run-as com.trace.app cat /data/data/com.trace.app/databases/trace.db > trace.db" />
+    </LinearLayout>
+</ScrollView>
