@@ -273,10 +273,24 @@ class VlmCaptureService : Service() {
 
     // ------------------------------------------------------- A. dwell 通道（UsageStats）
 
+    /** 上次尝试「自愈无障碍」的时间戳（60 s 限一次，别反复写系统设置）。 */
+    private var lastHealAttempt = 0L
+
     private fun tick() {
         if (!autoCapture || !running) return
         // 采集源二选一：无障碍（整屏、免授权弹窗）优先，其次才是投屏会话。
         if (!A11yCapture.ready && !ScreenCapture.running) {
+            // OriginOS 会在后台把第三方无障碍摘掉（实测闲置约两小时设置就空了），
+            // 用户感觉「开了又自动关」。这里兜底自愈：拿到 WRITE_SECURE_SETTINGS 就能写回去，
+            // 写进去系统会重新绑定服务，下一轮 tick 就恢复正常采集。
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastHealAttempt > 60_000L) {
+                lastHealAttempt = nowMs
+                if (A11yCapture.ensureEnabled(this)) {
+                    Log.i(TAG, "无障碍被系统摘掉，已自愈写回，等系统重新绑定")
+                    return
+                }
+            }
             Log.d(TAG, "tick: 没有可用的采集源（无障碍未连上且无投屏会话）")
             return
         }

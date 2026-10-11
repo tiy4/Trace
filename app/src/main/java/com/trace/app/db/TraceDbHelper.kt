@@ -635,6 +635,27 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
 
     fun digestCount(): Int = countWhere("daily_digest", null, null)
 
+    /**
+     * 从某天起（含）的所有总结，按天倒序、同一天里最新的在前。
+     *
+     * 日历页用它做两件事：① 标记「哪几天有总结」；② 点某天时直接取那天的正文。
+     * `day` 是 'yyyy-MM-dd' 文本，做范围比较是安全的（字典序 == 日期序）。
+     */
+    fun digestsSince(fromDay: String, limit: Int = 400): List<Digest> {
+        val list = mutableListOf<Digest>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+                "WHERE day >= ? ORDER BY day DESC, created_at DESC LIMIT ?",
+            arrayOf(fromDay, limit.toString())
+        )
+        while (cursor.moveToNext()) list.add(readDigest(cursor))
+        cursor.close()
+        return list
+    }
+
+    /** 有总结的所有日期（倒序），给日历点小圆点用。 */
+    fun digestDays(limit: Int = 400): List<String> = digestsSince("0000-01-01", limit).map { it.day }
+
     data class ChatMessage(
         val id: Long,
         val timestamp: Long,

@@ -102,7 +102,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnDigest).setOnClickListener { generateDigest() }
-        findViewById<Button>(R.id.btnDigestHistory).setOnClickListener { showDigestHistory() }
+        findViewById<Button>(R.id.btnDigestHistory).setOnClickListener {
+            startActivity(Intent(this, DigestHistoryActivity::class.java))
+        }
 
         refresh()
     }
@@ -123,6 +125,13 @@ class MainActivity : AppCompatActivity() {
      * 本机无障碍「开一次长期有效」的定位。
      */
     private fun autoResumeVlm() {
+        // OriginOS 会在后台把第三方无障碍摘掉（实测闲置约两小时后设置直接变空），
+        // 用户看到的就是「我明明开了，一出来又自动关了」。进 App 先自愈一次：
+        // 只要 adb 一次性给过 WRITE_SECURE_SETTINGS，就能自己写回去，不用再麻烦用户。
+        val healed = A11yCapture.ensureEnabled(this)
+        if (healed && !A11yCapture.ready) {
+            findViewById<Switch>(R.id.swVlm).postDelayed({ refreshVlm() }, 1500)
+        }
         if (VlmCaptureService.running) return
         if (!vlmPrefs().getBoolean(KEY_VLM_ON, false)) return
         ContextCompat.startForegroundService(
@@ -468,41 +477,6 @@ class MainActivity : AppCompatActivity() {
                 btn.isEnabled = true
             }
         }
-    }
-
-    private fun showDigestHistory() {
-        val list = db.recentDigests(30)
-        if (list.isEmpty()) {
-            Toast.makeText(this, "还没有任何总结", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val labels = list.map { d ->
-            val where = if (d.engine == "cloud") "云端" else "端侧"
-            "${d.day}  ·  $where  ·  ${d.text.take(26)}…"
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("历史总结（${list.size} 份，最新在前）")
-            .setItems(labels) { _, i -> showDigestDetail(list[i]) }
-            .setNegativeButton("关闭", null)
-            .show()
-    }
-
-    private fun showDigestDetail(d: TraceDbHelper.Digest) {
-        val body = d.text +
-            "\n\n———\n${d.day} · " + (if (d.engine == "cloud") "云端" else "端侧") +
-            " · ${d.model}\n生成于 ${digestTimeFmt.format(java.util.Date(d.createdAt))}"
-        AlertDialog.Builder(this)
-            .setTitle("${d.day} 的总结")
-            .setMessage(body)
-            .setPositiveButton("关闭", null)
-            .setNeutralButton("看喂给模型的数据") { _, _ ->
-                AlertDialog.Builder(this)
-                    .setTitle("${d.day} 总结的输入")
-                    .setMessage(d.stats)
-                    .setPositiveButton("关闭", null)
-                    .show()
-            }
-            .show()
     }
 
     /**

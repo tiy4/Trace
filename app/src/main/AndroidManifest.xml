@@ -10,6 +10,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      无障碍自愈用：OriginOS 会在后台把第三方无障碍服务摘掉（实测闲置约两小时后
+      enabled_accessibility_services 变空），用户看到的就是「一开就自动关」。
+      这个权限普通安装拿不到，由 scripts\enable-a11y.ps1 里的 adb `pm grant` 一次性授予；
+      拿到之后 App 就能自己把服务写回去（见 A11yCapture.ensureEnabled）。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <!--
       Android 11+ 的包可见性：不加这段，PackageManager 对大多数应用会抛
@@ -60,6 +69,11 @@
             android:exported="false"
             android:label="AI 助手"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".DigestHistoryActivity"
+            android:exported="false"
+            android:label="历史总结" />
 
         <service
             android:name=".MonitorService"

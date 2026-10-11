@@ -1,4 +1,4 @@
-﻿# enable-a11y.ps1 —— 一键把 Trace 的无障碍截屏服务打开（整屏、免投屏授权弹窗）
+# enable-a11y.ps1 —— 一键把 Trace 的无障碍截屏服务打开（整屏、免投屏授权弹窗）
 #
 # 为什么需要脚本：Android 没有「应用自己开无障碍」的合法 API（设计上不开放），
 # 而且**每次 adb install -r 重装 App，系统都会把该 App 的无障碍服务自动关掉**。
@@ -20,6 +20,14 @@ param(
 if (-not (Test-Path $Adb)) { throw "adb not found: $Adb" }
 
 $pkg = ($Svc -split '/')[0]
+
+# 一次性授权：让 App 自己能把无障碍写回去（OriginOS 会在后台摘掉第三方无障碍，
+# 实测闲置约两小时后 enabled_accessibility_services 变空）。没有这个权限，
+# App 只能干看着自己的服务被关；有了它 A11yCapture.ensureEnabled 就能自愈。
+# 这个权限是 signature|development 级，普通安装拿不到，adb 可以授。
+& $Adb shell pm grant $pkg android.permission.WRITE_SECURE_SETTINGS 2>&1 | Out-Null
+Write-Host "已授权 WRITE_SECURE_SETTINGS（App 可在被系统摘掉后自愈）"
+
 $raw = (& $Adb shell settings get secure enabled_accessibility_services) -join ''
 $cur = @()
 if ($raw -and $raw.Trim() -ne 'null') {
