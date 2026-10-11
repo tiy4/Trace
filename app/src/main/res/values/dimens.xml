@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  设计 token（DESIGN SPEC 02）：12dp 栅格，步进 6 / 12 / 18 / 24 / 36。
+  屏幕左右留白 18dp，卡片内边距 18dp，卡片间距 12dp。
+-->
+<resources>
+    <dimen name="gutter">18dp</dimen>
+    <dimen name="card_gap">12dp</dimen>
+    <dimen name="card_pad">18dp</dimen>
+    <dimen name="gap_s">6dp</dimen>
+    <dimen name="gap_m">12dp</dimen>
+    <dimen name="gap_l">24dp</dimen>
+
+    <dimen name="radius_card">18dp</dimen>
+    <dimen name="radius_control">14dp</dimen>
+    <dimen name="radius_thumb">11dp</dimen>
+
+    <dimen name="text_page_title">26sp</dimen>
+    <dimen name="text_card_title">17sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_metric">40sp</dimen>
+    <dimen name="text_data">44sp</dimen>
+</resources>

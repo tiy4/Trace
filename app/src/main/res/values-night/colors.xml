@@ -1,30 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  暗色模式（本机系统即暗色，所以这份是实际生效的）。
-  只覆盖语义名；原始色阶保持品牌一致性（主色在暗底上略微提亮以便对比）。
+  深色霓虹是应用唯一的一套外观（设计稿只出深色）。
+  这里保持与 values/colors.xml 同名同值，避免系统切到亮色时出现「白底白字」。
+  要改色只改 values/colors.xml，然后同步本文件。
 -->
 <resources>
-    <color name="brand_500">#6E72E2</color>
-    <color name="brand_600">#5B5FCF</color>
-    <color name="brand_container">#232752</color>
-    <color name="on_brand_container">#C9CCFF</color>
+    <color name="accent">#22D3EE</color>
+    <color name="accent_2">#5B8CFF</color>
+    <color name="brand_500">#4C8DFF</color>
+    <color name="brand_600">#3A79E6</color>
+    <color name="brand_container">#16273F</color>
+    <color name="on_brand_container">#9CC6FF</color>
     <color name="on_brand">#FFFFFF</color>
 
-    <color name="amber_500">#FFC24D</color>
-    <color name="amber_container">#3A2A08</color>
-    <color name="on_amber_container">#FFD79A</color>
+    <color name="amber_500">#FFB86B</color>
+    <color name="amber_container">#3A2A12</color>
+    <color name="on_amber_container">#FFD9A8</color>
+    <color name="green">#34D399</color>
+    <color name="red">#FF6B6B</color>
 
-    <color name="green">#4ADE80</color>
-    <color name="red">#F87171</color>
+    <color name="bg">#0B0F17</color>
+    <color name="surface">#131926</color>
+    <color name="surface_variant">#1B2231</color>
+    <color name="outline">#263041</color>
 
-    <color name="bg">#0F1116</color>
-    <color name="surface">#171A22</color>
-    <color name="surface_variant">#1E2230</color>
-    <color name="outline">#2B3040</color>
+    <color name="glass">#0FFFFFFF</color>
+    <color name="glass_stroke">#1AFFFFFF</color>
+    <color name="glass_strong">#17FFFFFF</color>
 
-    <color name="text">#E9EBF2</color>
-    <color name="text_2">#9AA2B2</color>
-    <color name="text_3">#6E7789</color>
+    <color name="text">#E9EDF7</color>
+    <color name="text_2">#9AA6BC</color>
+    <color name="text_3">#6B7789</color>
 
-    <color name="purple_500">#5B5FCF</color>
+    <color name="purple_500">#4C8DFF</color>
 </resources>

@@ -8,23 +8,24 @@
     android:fitsSystemWindows="true">
 
     <TextView
+        style="@style/Text.Trace.PageTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="流水明细"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="@color/text"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingTop="20dp"
-        android:paddingBottom="14dp"
-        android:background="?attr/colorSurface" />
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="10dp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:padding="8dp"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="8dp"
         android:clipToPadding="false" />
+
+    <include layout="@layout/view_bottom_nav" />
 </LinearLayout>

@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.trace.app.behavior.ActivityLabel
 import com.trace.app.behavior.UsageStatsHelper
 import com.trace.app.db.TraceDbHelper
+import com.trace.app.ui.BottomNav
 import com.trace.app.util.AppNames
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -30,6 +31,7 @@ class BehaviorActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_behavior)
+        BottomNav.bind(this, BottomNav.BEHAVIOR)
 
         val db = TraceDbHelper(this)
         val ush = UsageStatsHelper(this)

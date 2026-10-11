@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 强调色淡底（小徽标/选中态）：只有状态与徽标允许用强调色 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/brand_container" />
+    <corners android:radius="10dp" />
+</shape>

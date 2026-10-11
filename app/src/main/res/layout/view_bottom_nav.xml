@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  全局底部导航（DESIGN SPEC 03：玻璃条 + 5 项，中央是强调色圆钮）。
+  由每个 Activity 用 <include layout="@layout/view_bottom_nav" /> 引入，
+  绑定与高亮统一走 com.trace.app.ui.BottomNav.bind(activity, current)。
+  id 固定为 navHome / navRecords / navAdd / navBehavior / navChat。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/nav_bg">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/glass_stroke" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp">
+
+        <LinearLayout
+            android:id="@+id/navHome"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:id="@+id/tvNavHomeIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="◍"
+                android:textSize="17sp"
+                android:textColor="@color/nav_idle" />
+
+            <TextView
+                android:id="@+id/tvNavHomeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="首页"
+                android:textSize="10.5sp"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/nav_idle" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navRecords"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:id="@+id/tvNavRecordsIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="≡"
+                android:textSize="17sp"
+                android:textColor="@color/nav_idle" />
+
+            <TextView
+                android:id="@+id/tvNavRecordsLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="流水"
+                android:textSize="10.5sp"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/nav_idle" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navAdd"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_nav_center"
+                android:gravity="center"
+                android:text="＋"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_brand" />
+
+            <TextView
+                android:id="@+id/tvNavAddLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="记一笔"
+                android:textSize="10.5sp"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/nav_idle" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navBehavior"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:id="@+id/tvNavBehaviorIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▤"
+                android:textSize="17sp"
+                android:textColor="@color/nav_idle" />
+
+            <TextView
+                android:id="@+id/tvNavBehaviorLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="行为"
+                android:textSize="10.5sp"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/nav_idle" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navChat"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:id="@+id/tvNavChatIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="◌"
+                android:textSize="17sp"
+                android:textColor="@color/nav_idle" />
+
+            <TextView
+                android:id="@+id/tvNavChatLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="助手"
+                android:textSize="10.5sp"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/nav_idle" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

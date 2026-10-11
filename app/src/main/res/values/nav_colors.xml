@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底部导航专用色：玻璃条底 + 选中态。 -->
+<resources>
+    <color name="nav_bg">#F20B0F17</color>
+    <color name="nav_idle">#8A9AA6BC</color>
+</resources>

@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.trace.app.ai.GlmApi
 import com.trace.app.behavior.ActivityLabel
 import com.trace.app.db.TraceDbHelper
+import com.trace.app.ui.BottomNav
 import com.trace.app.util.AppNames
 import com.trace.app.vlm.VlmEngine
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +56,7 @@ class ChatActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat)
+        BottomNav.bind(this, BottomNav.CHAT)
 
         db = TraceDbHelper(this)
         prefs = getSharedPreferences("glm_config", MODE_PRIVATE)

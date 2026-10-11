@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.trace.app.db.TraceDbHelper
+import com.trace.app.ui.BottomNav
 import com.trace.app.model.Record
 import java.text.SimpleDateFormat
 import java.util.*
@@ -21,6 +22,7 @@ class RecordsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_records)
+        BottomNav.bind(this, BottomNav.RECORDS)
         db = TraceDbHelper(this)
         rv = findViewById(R.id.rv)
         rv.layoutManager = LinearLayoutManager(this)

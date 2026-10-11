@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.trace.app.ai.DailySummary
 import com.trace.app.db.TraceDbHelper
 import com.trace.app.insight.InsightEngine
+import com.trace.app.ui.BottomNav
 import com.trace.app.util.AppNames
 import com.trace.app.vlm.A11yCapture
 import com.trace.app.vlm.AdaptiveSlice
@@ -78,16 +79,9 @@ class MainActivity : AppCompatActivity() {
         db = TraceDbHelper(this)
         insight = InsightEngine()
 
-        findViewById<Button>(R.id.btnAdd).setOnClickListener { showAddDialog() }
-        findViewById<Button>(R.id.btnRecords).setOnClickListener {
-            startActivity(Intent(this, RecordsActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnBehavior).setOnClickListener {
-            startActivity(Intent(this, BehaviorActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnChat).setOnClickListener {
-            startActivity(Intent(this, ChatActivity::class.java))
-        }
+        // 底部导航（底部玻璃条）统一由 BottomNav 绑定；首页这一份只负责高亮与跳转。
+        BottomNav.bind(this, BottomNav.HOME)
+        handleNavIntent(intent)
         findViewById<Button>(R.id.btnMonitor).setOnClickListener { toggleMonitor() }
 
         findViewById<Switch>(R.id.swVlm).setOnCheckedChangeListener { _, checked ->
@@ -511,7 +505,25 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showAddDialog() {
+    /**
+     * 底栏「＋记一笔」：别的页面过来时带 EXTRA_ADD，复用本实例（清单里 singleTop）后再弹窗。
+     * 延迟 150ms 是因为 onNewIntent 时布局可能还在重建，直接 show 会挂在错误的位置。
+     */
+    private fun handleNavIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(BottomNav.EXTRA_ADD, false) == true) {
+            intent.removeExtra(BottomNav.EXTRA_ADD)
+            window.decorView.postDelayed({ openAddDialog() }, 150)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNavIntent(intent)
+    }
+
+    /** 记一笔弹窗（底栏中央圆钮 / 首页按钮都走这里）。 */
+    fun openAddDialog() {
         val input = EditText(this)
         input.hint = "金额（如 86.5）"
         input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL

@@ -32,9 +32,12 @@
         android:theme="@style/Theme.Trace"
         android:supportsRtl="true">
 
+        <!-- singleTop：底栏在别的页面点「首页/记一笔」时复用本实例并走 onNewIntent，
+             否则会不断新建 MainActivity 叠在栈上。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="Trace V0.1">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

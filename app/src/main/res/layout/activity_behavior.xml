@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 行为统计页。id：tvTop / tvEvents / btnGrant 由 BehaviorActivity.kt 引用。 -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="?android:attr/colorBackground"
-    android:fitsSystemWindows="true"
-    android:clipToPadding="false"
-    android:scrollbars="none">
+    android:fitsSystemWindows="true">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -20,10 +26,8 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="行为统计"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="@color/text" />
+            style="@style/Text.Trace.PageTitle"
+            android:text="行为统计" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -111,3 +115,6 @@
             android:layout_marginTop="20dp" />
     </LinearLayout>
 </ScrollView>
+
+    <include layout="@layout/view_bottom_nav" />
+</LinearLayout>

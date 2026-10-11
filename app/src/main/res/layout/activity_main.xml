@@ -9,14 +9,20 @@
       旧版内容会被状态栏压住），内层的 padding 写在子 LinearLayout 上，别写在这层（会被 insets 覆盖）。
     · 标题栏由本布局自绘：主题已换成 NoActionBar（旧版 ActionBar 在暗色系统下是一条近黑色横条）。
 -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="?android:attr/colorBackground"
-    android:fitsSystemWindows="true"
-    android:clipToPadding="false"
-    android:scrollbars="none">
+    android:fitsSystemWindows="true">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -444,47 +450,8 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ===== 底部动作 ===== -->
-        <Button
-            android:id="@+id/btnAdd"
-            style="@style/Widget.Trace.Button.Primary"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:text="记一笔" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="10dp">
-
-            <Button
-                android:id="@+id/btnRecords"
-                style="@style/Widget.Trace.Button.Tonal"
-                android:layout_width="0dp"
-                android:layout_height="46dp"
-                android:layout_weight="1"
-                android:text="流水" />
-
-            <Button
-                android:id="@+id/btnBehavior"
-                style="@style/Widget.Trace.Button.Tonal"
-                android:layout_width="0dp"
-                android:layout_height="46dp"
-                android:layout_weight="1"
-                android:text="行为"
-                android:layout_marginStart="8dp" />
-
-            <Button
-                android:id="@+id/btnChat"
-                style="@style/Widget.Trace.Button.Tonal"
-                android:layout_width="0dp"
-                android:layout_height="46dp"
-                android:layout_weight="1"
-                android:text="AI 助手"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
-
+        <!-- ===== 底部说明 =====
+             记一笔已经移到底栏中央的强调色圆钮（view_bottom_nav），首页不再重复放一个按钮。 -->
         <TextView
             style="@style/Text.Trace.Caption"
             android:layout_width="match_parent"
@@ -493,4 +460,7 @@
             android:textColor="@color/text_3"
             android:text="📦 数据查询：adb shell run-as com.trace.app cat /data/data/com.trace.app/databases/trace.db > trace.db" />
     </LinearLayout>
-</ScrollView>
+    </ScrollView>
+
+    <include layout="@layout/view_bottom_nav" />
+</LinearLayout>

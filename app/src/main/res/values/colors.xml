@@ -1,39 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  色板（亮色）。
+  色板（深色霓虹 —— 来自 Open Design 12 页设计规范 DESIGN SPEC 01）。
   命名分两层：
-    · 原始色阶 brand_500 / amber_500 …
-    · 语义角色 surface / text / outline …（暗色由 values-night/colors.xml 覆盖同名项）
-  UI 一律引用语义名，不要直接写颜色字面量——否则暗色模式下会出现「白底白字」。
+    · 原始色阶 brand_* / accent / warm …
+    · 语义角色 bg / surface / glass / text / outline …（布局一律引用语义名）
+  应用是**纯深色**（设计稿只有深色一版）：values-night/colors.xml 与这里保持一致，
+  这样系统切亮/暗都不会出现「白底白字」。
 -->
 <resources>
-    <!-- 品牌 -->
-    <color name="brand_500">#5B5FCF</color>
-    <color name="brand_600">#4A4EB8</color>
-    <color name="brand_container">#E7E9FF</color>
-    <color name="on_brand_container">#2A2E85</color>
+    <!-- 品牌 / 强调（设计稿：accent #22D3EE、accent-2 #5B8CFF；主按钮走两者渐变） -->
+    <color name="accent">#22D3EE</color>
+    <color name="accent_2">#5B8CFF</color>
+    <color name="brand_500">#4C8DFF</color>
+    <color name="brand_600">#3A79E6</color>
+    <color name="brand_container">#16273F</color>
+    <color name="on_brand_container">#9CC6FF</color>
     <color name="on_brand">#FFFFFF</color>
 
-    <!-- 强调（深夜冲动 / 提醒） -->
-    <color name="amber_500">#F59E0B</color>
-    <color name="amber_container">#FFF0D6</color>
-    <color name="on_amber_container">#8A5300</color>
-
-    <!-- 状态 -->
-    <color name="green">#15A34A</color>
-    <color name="red">#DC2626</color>
+    <!-- 状态色：深夜冲动用暖色，涨跌/告警用绿红 -->
+    <color name="amber_500">#FFB86B</color>
+    <color name="amber_container">#3A2A12</color>
+    <color name="on_amber_container">#FFD9A8</color>
+    <color name="green">#34D399</color>
+    <color name="red">#FF6B6B</color>
 
     <!-- 语义：背景与容器 -->
-    <color name="bg">#F4F5F9</color>
-    <color name="surface">#FFFFFF</color>
-    <color name="surface_variant">#F2F3F9</color>
-    <color name="outline">#E4E6EF</color>
+    <color name="bg">#0B0F17</color>
+    <color name="surface">#131926</color>
+    <color name="surface_variant">#1B2231</color>
+    <color name="outline">#263041</color>
+
+    <!-- 玻璃材质：卡片/导航/控件底 = 白 6% 填充 + 白 10% 描边（设计稿 DESIGN SPEC 01） -->
+    <color name="glass">#0FFFFFFF</color>
+    <color name="glass_stroke">#1AFFFFFF</color>
+    <color name="glass_strong">#17FFFFFF</color>
 
     <!-- 语义：文字 -->
-    <color name="text">#15171E</color>
-    <color name="text_2">#646B79</color>
-    <color name="text_3">#98A0AE</color>
+    <color name="text">#E9EDF7</color>
+    <color name="text_2">#9AA6BC</color>
+    <color name="text_3">#6B7789</color>
 
     <!-- 兼容旧引用 -->
-    <color name="purple_500">#5B5FCF</color>
+    <color name="purple_500">#4C8DFF</color>
 </resources>
