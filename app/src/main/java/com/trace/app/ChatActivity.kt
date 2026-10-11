@@ -69,7 +69,30 @@ class ChatActivity : AppCompatActivity() {
         btnSend.setOnClickListener { trySend() }
 
         refreshSubtitle()
-        welcome()
+        loadHistory()
+    }
+
+    /**
+     * 聊天记录留档：进页面先把历史铺回来（数据在本机 chat_messages 表里），
+     * 一条都没有才显示欢迎语。顺带重建 [turns]，云端多轮上下文才不会断。
+     */
+    private fun loadHistory() {
+        val history = db.recentChatMessages(60)
+        if (history.isEmpty()) {
+            welcome()
+            return
+        }
+        addBubble("ai", "📜 下面是我们的聊天记录（本机留档共 ${db.chatMessageCount()} 条）——" +
+            "点右上角 ⚙️ 可以清空。")
+        history.forEach { m ->
+            if (m.role == "user") addBubble("me", m.text) else addBubble("ai", m.text)
+        }
+        history.forEachIndexed { i, m ->
+            if (m.role == "user" && i + 1 < history.size && history[i + 1].role != "user") {
+                turns.add(m.text to history[i + 1].text)
+            }
+        }
+        scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
     override fun onDestroy() {
@@ -131,6 +154,7 @@ class ChatActivity : AppCompatActivity() {
 
         input.text.clear()
         addBubble("me", text)
+        db.addChatMessage("user", text, if (isLocal()) "local" else "cloud")
         if (isLocal()) sendLocal(text) else sendCloud(text, apiKey)
     }
 
@@ -166,7 +190,11 @@ class ChatActivity : AppCompatActivity() {
                 else -> "${bubble.text}\n\n— 端侧 · ${String.format(Locale.CHINA, "%.1f", sec)} s"
             }
             bubble.text = answer
-            if (r.ok) turns.add(question to answer.substringBefore("\n\n— 端侧"))
+            if (r.ok) {
+                val pure = answer.substringBefore("\n\n— 端侧")
+                turns.add(question to pure)
+                db.addChatMessage("ai", pure, "local")
+            }
             busy = false
             btnSend.text = "发送"
         }
@@ -188,6 +216,7 @@ class ChatActivity : AppCompatActivity() {
                     bubble.tag = null
                     bubble.text = "$reply\n\n— 云端 $model · ${String.format(Locale.CHINA, "%.1f", sec)} s"
                     turns.add(question to reply)
+                    db.addChatMessage("ai", reply, "cloud")
                     busy = false
                     btnSend.text = "发送"
                 }
@@ -365,6 +394,19 @@ class ChatActivity : AppCompatActivity() {
                 )
             }
             .setNegativeButton("取消", null)
+            .setNeutralButton("清空聊天记录") { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle("清空聊天记录？")
+                    .setMessage("本机已留档 ${db.chatMessageCount()} 条，清空后不可恢复。")
+                    .setPositiveButton("清空") { _, _ ->
+                        db.clearChatMessages()
+                        turns.clear()
+                        chatContainer.removeAllViews()
+                        welcome()
+                    }
+                    .setNegativeButton("算了", null)
+                    .show()
+            }
             .show()
     }
 

@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.trace.app.ai.DailySummary
 import com.trace.app.db.TraceDbHelper
 import com.trace.app.insight.InsightEngine
 import com.trace.app.util.AppNames
@@ -106,6 +107,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<Button>(R.id.btnDigest).setOnClickListener { generateDigest() }
+        findViewById<Button>(R.id.btnDigestHistory).setOnClickListener { showDigestHistory() }
+
         refresh()
     }
 
@@ -168,6 +172,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvTotalAmount).text = "¥ %.2f".format(total)
         findViewById<TextView>(R.id.tvNightCount).text = "深夜冲动 $nightCount 笔"
         findViewById<TextView>(R.id.tvReport).text = report
+        refreshDigest()
 
         // 监控状态
         val running = MonitorService.running
@@ -417,6 +422,93 @@ class MainActivity : AppCompatActivity() {
     private fun toggleArchiveMode() {
         VlmCaptureService.batchOnly = !VlmCaptureService.batchOnly
         refreshVlm()
+    }
+
+    // ===== 今日总结 =====
+
+    private val digestTimeFmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+
+    /** 只读库、不触发模型：把最近一份总结画到卡片上。 */
+    private fun refreshDigest() {
+        val d = db.latestDigest(DailySummary.dayKey())
+        val tv = findViewById<TextView>(R.id.tvDigest)
+        val meta = findViewById<TextView>(R.id.tvDigestMeta)
+        val btn = findViewById<Button>(R.id.btnDigest)
+        if (d == null) {
+            tv.text = "今天还没有总结。"
+            meta.text = if (db.digestCount() > 0) {
+                "熄屏充电时会自动写一份（端侧模型，约 1 分钟）· 历史留档 ${db.digestCount()} 份"
+            } else {
+                "熄屏充电时会自动写一份（端侧模型，约 1 分钟）"
+            }
+            btn.text = "写今天总结"
+        } else {
+            tv.text = d.text
+            val where = if (d.engine == "cloud") "云端" else "端侧"
+            meta.text = "$where · ${d.model} · ${digestTimeFmt.format(java.util.Date(d.createdAt))} · " +
+                "留档共 ${db.digestCount()} 份（点「历史总结」回看）"
+            btn.text = "重新写一份"
+        }
+        btn.isEnabled = true
+    }
+
+    /** 手动生成（端侧要跑 30-60 s，期间把卡片变成进度态）。 */
+    private fun generateDigest() {
+        val btn = findViewById<Button>(R.id.btnDigest)
+        val tv = findViewById<TextView>(R.id.tvDigest)
+        val meta = findViewById<TextView>(R.id.tvDigestMeta)
+        btn.isEnabled = false
+        tv.text = "正在写今天的总结…\n（端侧模型独占运行，第一次还要先加载约 2.4 GB 模型）"
+        meta.text = "生成中 · 数据不出手机"
+        uiScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                DailySummary.generate(this@MainActivity, db, force = true)
+            }
+            if (r.ok) {
+                refreshDigest()
+                Toast.makeText(this@MainActivity, "总结已生成并留档", Toast.LENGTH_SHORT).show()
+            } else {
+                refreshDigest()
+                tv.text = "这次没写成：${r.error}"
+                meta.text = "端侧模型忙或数据不够时可稍后再试；实在不行点「历史总结」看以前的"
+                btn.isEnabled = true
+            }
+        }
+    }
+
+    private fun showDigestHistory() {
+        val list = db.recentDigests(30)
+        if (list.isEmpty()) {
+            Toast.makeText(this, "还没有任何总结", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = list.map { d ->
+            val where = if (d.engine == "cloud") "云端" else "端侧"
+            "${d.day}  ·  $where  ·  ${d.text.take(26)}…"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("历史总结（${list.size} 份，最新在前）")
+            .setItems(labels) { _, i -> showDigestDetail(list[i]) }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showDigestDetail(d: TraceDbHelper.Digest) {
+        val body = d.text +
+            "\n\n———\n${d.day} · " + (if (d.engine == "cloud") "云端" else "端侧") +
+            " · ${d.model}\n生成于 ${digestTimeFmt.format(java.util.Date(d.createdAt))}"
+        AlertDialog.Builder(this)
+            .setTitle("${d.day} 的总结")
+            .setMessage(body)
+            .setPositiveButton("关闭", null)
+            .setNeutralButton("看喂给模型的数据") { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle("${d.day} 总结的输入")
+                    .setMessage(d.stats)
+                    .setPositiveButton("关闭", null)
+                    .show()
+            }
+            .show()
     }
 
     private fun showAddDialog() {

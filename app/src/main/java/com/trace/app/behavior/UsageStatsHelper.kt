@@ -1,11 +1,21 @@
 package com.trace.app.behavior
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import com.trace.app.db.TraceDbHelper
 import com.trace.app.util.AppNames
 
 class UsageStatsHelper(private val context: Context) {
+
+    /** 某天（[start,end) 区间）的真实使用情况：墙钟总时长、四时段分布、应用时长。 */
+    data class DayUsage(
+        val totalMs: Long,
+        val slots: LongArray,
+        val apps: List<AppUsage>,
+    ) {
+        data class AppUsage(val pkg: String, val name: String, val ms: Long, val opens: Int)
+    }
 
     private fun manager(): UsageStatsManager? =
         context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
@@ -16,6 +26,88 @@ class UsageStatsHelper(private val context: Context) {
         val stats = m.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 60_000L, now)
         return stats.isNotEmpty()
     }
+
+    /**
+     * 取 [start,end) 区间的系统级使用情况。
+     *
+     * 为什么不用自己的库表：`behavior_events` 只在采样时写，常常是空的，
+     * 于是出现过「屏幕时间总计不到 1 分钟、时段分布却写着 1 小时 35 分」这种自相矛盾。
+     * 这里直接读系统 UsageStats 事件流，算出来的总时长/时段/应用是**同源**的。
+     *
+     * 总时长取所有前后台区间的**并集**（多个应用可能同时算前台，直接相加会重复），
+     * 应用时长则是各应用自己的前台累计（可能大于总时长，属正常）。
+     */
+    fun dayUsage(start: Long, end: Long, topN: Int = 8): DayUsage {
+        val m = manager() ?: return DayUsage(0L, LongArray(4), emptyList())
+        val evs = m.queryEvents(start, end)
+        val e = UsageEvents.Event()
+        val raw = ArrayList<Triple<String, Long, Int>>()
+        while (evs.hasNextEvent()) {
+            evs.getNextEvent(e)
+            val t = e.eventType
+            if (t == UsageEvents.Event.ACTIVITY_RESUMED ||
+                t == UsageEvents.Event.ACTIVITY_PAUSED ||
+                t == UsageEvents.Event.ACTIVITY_STOPPED
+            ) {
+                raw.add(Triple(e.packageName ?: "", e.timeStamp, t))
+            }
+        }
+        raw.sortBy { it.second }
+
+        val open = HashMap<String, Long>()
+        val perApp = HashMap<String, Long>()
+        val opens = HashMap<String, Int>()
+        val intervals = ArrayList<Pair<Long, Long>>()
+        for ((pkg, ts, type) in raw) {
+            if (type == UsageEvents.Event.ACTIVITY_RESUMED) {
+                opens[pkg] = (opens[pkg] ?: 0) + 1
+                open[pkg] = ts
+            } else {
+                val st = open.remove(pkg) ?: continue
+                if (ts > st) {
+                    perApp[pkg] = (perApp[pkg] ?: 0L) + (ts - st)
+                    intervals.add(st to ts)
+                }
+            }
+        }
+        // 还没关闭的区间算到「现在」为止（当天）或区间末尾（历史某天）
+        val tail = minOf(System.currentTimeMillis(), end)
+        open.forEach { (pkg, st) ->
+            if (tail > st) {
+                perApp[pkg] = (perApp[pkg] ?: 0L) + (tail - st)
+                intervals.add(st to tail)
+            }
+        }
+
+        intervals.sortBy { it.first }
+        val slots = LongArray(4)
+        var total = 0L
+        var curS = -1L
+        var curE = -1L
+        fun flushRange() {
+            if (curS < 0 || curE <= curS) return
+            val len = curE - curS
+            total += len
+            slots[hourOf(curS) / 6] += len
+        }
+        for ((s0, e0) in intervals) {
+            when {
+                curS < 0 -> { curS = s0; curE = e0 }
+                s0 <= curE -> if (e0 > curE) curE = e0
+                else -> { flushRange(); curS = s0; curE = e0 }
+            }
+        }
+        flushRange()
+
+        val apps = perApp.entries.sortedByDescending { it.value }.take(topN).map {
+            DayUsage.AppUsage(it.key, AppNames.of(context, it.key), it.value, opens[it.key] ?: 0)
+        }
+        return DayUsage(total, slots, apps)
+    }
+
+    private fun hourOf(ts: Long): Int =
+        java.util.Calendar.getInstance().apply { timeInMillis = ts }
+            .get(java.util.Calendar.HOUR_OF_DAY)
 
     /**
      * 抓取今日 Top 5 应用使用时长。

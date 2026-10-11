@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import com.trace.app.MainActivity
 import com.trace.app.MonitorService
 import com.trace.app.R
+import com.trace.app.ai.DailySummary
 import com.trace.app.behavior.ActivityLabel
 import com.trace.app.db.TraceDbHelper
 import com.trace.app.util.AppNames
@@ -30,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Calendar
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -59,6 +61,10 @@ class VlmCaptureService : Service() {
 
         private const val CHANNEL_ID = "trace_vlm"
         private const val NOTIFY_ID = 1002
+
+        /** 每日总结用单独的渠道与 id：它是一条「可以点进来看」的消息，不该混进常驻通知。 */
+        private const val SUMMARY_CHANNEL_ID = "trace_digest"
+        private const val SUMMARY_NOTIFY_ID = 1003
 
         /** UsageStats 轮询周期。 */
         private const val POLL_MS = 15_000L
@@ -143,6 +149,10 @@ class VlmCaptureService : Service() {
 
     /** 模型是单槽的：同一时刻只允许一个分析在跑。 */
     private val analyzing = AtomicBoolean(false)
+
+    /** 每日总结：同时只跑一份；[summaryAttemptDay] 记住"今天自动试过"，失败会清空重来。 */
+    private val summaryRunning = AtomicBoolean(false)
+    @Volatile private var summaryAttemptDay = ""
 
     /** 诊断用：上一次打探针日志的时刻 / 上一次读到的点赞状态。 */
     private var lastProbeLogAt = 0L
@@ -350,6 +360,8 @@ class VlmCaptureService : Service() {
                 Log.i(TAG, "idle batch: 熄屏+充电，待分析 $pending 帧")
                 runBatch(limit = 3)
             }
+            // 帧补完了再写总结（同一个模型，先到先得，别两头抢）。
+            if (db.pendingFrameCount() == 0) maybeDailySummary()
             return
         }
 
@@ -771,6 +783,86 @@ class VlmCaptureService : Service() {
             nm.notify(NOTIFY_ID, buildNotification())
         } catch (t: Throwable) {
             Log.w(TAG, "notify failed", t)
+        }
+    }
+
+    // ------------------------------------------------------------ 每日总结
+
+    /**
+     * 熄屏时自动生成当天的「今日总结」并留档。
+     *
+     * 为什么必须熄屏：写一份总结要独占端侧模型 30-60 s；用户正在看屏幕时抢模型，
+     * 会把屏幕理解挤慢，手机也跟着发烫。所以规矩是：
+     *   - 熄屏（且关键帧都补完了，见 [sample]）；
+     *   - 今天还没有总结（想重写请点首页的按钮）；
+     *   - 充电时 18:00 之后就能跑；没充电要等到 23:00，且一天只自动试一次
+     *     （不然用户半夜频繁熄屏会反复空跑）。
+     * 失败（模型忙 / 没数据）会把「今天试过」标记清掉，下次熄屏再试。
+     */
+    private fun maybeDailySummary() {
+        if (summaryRunning.get()) return
+        val day = DailySummary.dayKey()
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val charging = isCharging()
+        val due = if (charging) hour >= 18 else hour >= 23
+        if (!due) return
+        if (db.latestDigest(day) != null) return
+        if (!charging && summaryAttemptDay == day) return
+
+        val (start, end) = DailySummary.dayRange(day)
+        if (db.totalUsageMs(start, end) <= 0 && db.recordCountInRange(start, end) == 0) {
+            Log.d(TAG, "daily summary: $day 还没有数据，跳过")
+            return
+        }
+
+        summaryAttemptDay = day
+        summaryRunning.set(true)
+        Log.i(TAG, "daily summary: 开始生成 $day（charging=$charging）")
+        scope.launch {
+            try {
+                val r = DailySummary.generate(this@VlmCaptureService, db, day)
+                if (r.ok) {
+                    Log.i(TAG, "daily summary: ok engine=${r.engine} 字数=${r.text.length}")
+                    notifySummary(r.text)
+                } else {
+                    Log.w(TAG, "daily summary: 失败 ${r.error}")
+                    summaryAttemptDay = ""
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "daily summary crashed", t)
+                summaryAttemptDay = ""
+            } finally {
+                summaryRunning.set(false)
+            }
+        }
+    }
+
+    /** 总结写好后的通知：点一下直接进首页看完整版。 */
+    private fun notifySummary(text: String) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.getNotificationChannel(SUMMARY_CHANNEL_ID) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        SUMMARY_CHANNEL_ID, "Trace 每日总结", NotificationManager.IMPORTANCE_DEFAULT
+                    )
+                )
+            }
+            val pi = PendingIntent.getActivity(
+                this, 1, Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val n = NotificationCompat.Builder(this, SUMMARY_CHANNEL_ID)
+                .setContentTitle("今天的 Trace 总结写好了")
+                .setContentText(text.lineSequence().firstOrNull() ?: "")
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build()
+            nm.notify(SUMMARY_NOTIFY_ID, n)
+        } catch (t: Throwable) {
+            Log.w(TAG, "summary notify failed", t)
         }
     }
 }

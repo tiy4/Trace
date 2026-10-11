@@ -190,6 +190,67 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- ===== 今日总结（端侧 AI，每天一份，留档可回看） ===== -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Trace.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    style="@style/Text.Trace.Section"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📝  今日总结" />
+
+                <TextView
+                    android:id="@+id/tvDigest"
+                    style="@style/Text.Trace.Body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="今天还没有总结。" />
+
+                <TextView
+                    android:id="@+id/tvDigestMeta"
+                    style="@style/Text.Trace.Caption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="熄屏充电时会自动写一份（端侧模型，约 1 分钟）" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+
+                    <Button
+                        android:id="@+id/btnDigest"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="写今天总结" />
+
+                    <Button
+                        android:id="@+id/btnDigestHistory"
+                        style="@style/Widget.Trace.Button.Tonal"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:text="历史总结" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- ===== AI 行为监控 ===== -->
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Trace.Card"

@@ -186,6 +186,7 @@ object VlmEngine {
         ctx: Context,
         prompt: String,
         maxTokens: Int = CHAT_MAX_TOKENS,
+        instruction: String = CHAT_INSTRUCTION,
         onToken: (String) -> Unit = {},
     ): VlmResult {
         val s = AdaptiveSlice.USER
@@ -206,7 +207,7 @@ object VlmEngine {
 
             val sb = StringBuilder()
             val t2 = System.currentTimeMillis()
-            e.sendUserPrompt(CHAT_INSTRUCTION + prompt, maxTokens).collect { tok ->
+            e.sendUserPrompt(instruction + prompt, maxTokens).collect { tok ->
                 if (tok.isNotEmpty()) {
                     sb.append(tok)
                     onToken(tok)

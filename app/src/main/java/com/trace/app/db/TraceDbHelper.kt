@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.trace.app.model.Record
 
-class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", null, 5) {
+class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", null, 6) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -38,6 +38,8 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
         db.execSQL(createContentEventsSql())
         db.execSQL(createActivityLogSql())
         db.execSQL(createUsageIndexSql())
+        db.execSQL(createDailyDigestSql())
+        db.execSQL(createChatMessageSql())
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -55,7 +57,42 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
             db.execSQL(createActivityLogSql())
             db.execSQL(createUsageIndexSql())
         }
+        if (oldVersion < 6) {
+            db.execSQL(createDailyDigestSql())
+            db.execSQL(createChatMessageSql())
+        }
     }
+
+    /**
+     * 每日 AI 总结留档（v6）。
+     *
+     * 一天可以有多份（重新生成会追加一条，读的时候取最新），这样能回看"模型当时是怎么说的"，
+     * 也能对比不同提示词/模型的效果。stats 存生成时喂给模型的关键数字，出问题时不用猜。
+     */
+    private fun createDailyDigestSql(): String =
+        """
+        CREATE TABLE IF NOT EXISTS daily_digest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            day TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            engine TEXT,
+            model TEXT,
+            text TEXT NOT NULL,
+            stats TEXT
+        )
+        """.trimIndent()
+
+    /** AI 助手聊天留档（v6）：关掉页面也不丢，可回看。 */
+    private fun createChatMessageSql(): String =
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            text TEXT NOT NULL,
+            engine TEXT
+        )
+        """.trimIndent()
 
     /**
      * 「用户在某应用里具体在干什么」（v5 新增）。
@@ -536,6 +573,265 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
         val v = if (cursor.moveToFirst()) cursor.getString(0) else null
         cursor.close()
         return v
+    }
+
+    // ---------------------------------------------------------------- 每日总结 / 聊天留档（v6）
+
+    data class Digest(
+        val id: Long,
+        val day: String,
+        val createdAt: Long,
+        val engine: String,
+        val model: String,
+        val text: String,
+        val stats: String,
+    )
+
+    fun addDigest(day: String, engine: String, model: String, text: String, stats: String): Long {
+        val values = ContentValues().apply {
+            put("day", day)
+            put("created_at", System.currentTimeMillis())
+            put("engine", engine)
+            put("model", model)
+            put("text", text)
+            put("stats", stats)
+        }
+        return writableDatabase.insert("daily_digest", null, values)
+    }
+
+    private fun readDigest(cursor: android.database.Cursor) = Digest(
+        id = cursor.getLong(0),
+        day = cursor.getString(1) ?: "",
+        createdAt = cursor.getLong(2),
+        engine = cursor.getString(3) ?: "",
+        model = cursor.getString(4) ?: "",
+        text = cursor.getString(5) ?: "",
+        stats = cursor.getString(6) ?: "",
+    )
+
+    /** 某天最新的一份总结。 */
+    fun latestDigest(day: String): Digest? {
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+                "WHERE day = ? ORDER BY created_at DESC LIMIT 1",
+            arrayOf(day)
+        )
+        val d = if (cursor.moveToFirst()) readDigest(cursor) else null
+        cursor.close()
+        return d
+    }
+
+    fun recentDigests(limit: Int = 14): List<Digest> {
+        val list = mutableListOf<Digest>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+                "ORDER BY created_at DESC LIMIT ?",
+            arrayOf(limit.toString())
+        )
+        while (cursor.moveToNext()) list.add(readDigest(cursor))
+        cursor.close()
+        return list
+    }
+
+    fun digestCount(): Int = countWhere("daily_digest", null, null)
+
+    data class ChatMessage(
+        val id: Long,
+        val timestamp: Long,
+        val role: String,
+        val text: String,
+        val engine: String,
+    )
+
+    fun addChatMessage(role: String, text: String, engine: String): Long {
+        val values = ContentValues().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("role", role)
+            put("text", text)
+            put("engine", engine)
+        }
+        return writableDatabase.insert("chat_messages", null, values)
+    }
+
+    /** 最近 N 条聊天记录，**按时间正序**返回（可直接铺进气泡）。 */
+    fun recentChatMessages(limit: Int = 60): List<ChatMessage> {
+        val list = mutableListOf<ChatMessage>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, timestamp, role, text, engine FROM chat_messages ORDER BY id DESC LIMIT ?",
+            arrayOf(limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(
+                ChatMessage(
+                    id = cursor.getLong(0),
+                    timestamp = cursor.getLong(1),
+                    role = cursor.getString(2) ?: "ai",
+                    text = cursor.getString(3) ?: "",
+                    engine = cursor.getString(4) ?: "",
+                )
+            )
+        }
+        cursor.close()
+        return list.reversed()
+    }
+
+    fun clearChatMessages() {
+        writableDatabase.delete("chat_messages", null, null)
+    }
+
+    fun chatMessageCount(): Int = countWhere("chat_messages", null, null)
+
+    // ---------------------------------------------------------------- 区间聚合（每日总结用）
+
+    /** [start, end) 内按应用汇总的屏幕时长（behavior_events 是采样表）。 */
+    fun usageInRange(start: Long, end: Long, limit: Int = 8): List<Pair<String, Long>> {
+        val list = mutableListOf<Pair<String, Long>>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT package_name, SUM(duration_ms) FROM behavior_events WHERE timestamp >= ? AND timestamp < ? " +
+                "GROUP BY package_name ORDER BY 2 DESC LIMIT ?",
+            arrayOf(start.toString(), end.toString(), limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add((cursor.getString(0) ?: "unknown") to cursor.getLong(1))
+        }
+        cursor.close()
+        return list
+    }
+
+    fun totalUsageMs(start: Long, end: Long): Long {
+        val cursor = readableDatabase.rawQuery(
+            "SELECT IFNULL(SUM(duration_ms), 0) FROM behavior_events WHERE timestamp >= ? AND timestamp < ?",
+            arrayOf(start.toString(), end.toString())
+        )
+        val v = if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        cursor.close()
+        return v
+    }
+
+    fun usageEventsInRange(start: Long, end: Long, limit: Int = 400): List<UsageEvent> {
+        val list = mutableListOf<UsageEvent>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT timestamp, package_name, activity, event_type FROM usage_events " +
+                "WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC LIMIT ?",
+            arrayOf(start.toString(), end.toString(), limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(
+                UsageEvent(
+                    timestamp = cursor.getLong(0),
+                    pkg = cursor.getString(1) ?: "?",
+                    activity = cursor.getString(2) ?: "",
+                    type = cursor.getString(3) ?: "",
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    /** 内容事件计数（LIKE / UNLIKE / SAVE / UNSAVE / VIDEO_CHANGED）。 */
+    fun contentEventCounts(start: Long, end: Long): Map<String, Int> {
+        val map = mutableMapOf<String, Int>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT event, COUNT(*) FROM content_events WHERE timestamp >= ? AND timestamp < ? GROUP BY event",
+            arrayOf(start.toString(), end.toString())
+        )
+        while (cursor.moveToNext()) map[cursor.getString(0) ?: "?"] = cursor.getInt(1)
+        cursor.close()
+        return map
+    }
+
+    /** 内容事件明细（用来给总结提供"刷到了什么"的样本）。 */
+    fun contentEventsInRange(start: Long, end: Long, limit: Int = 60): List<ContentEvent> {
+        val list = mutableListOf<ContentEvent>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, timestamp, package_name, event, title, author, extra FROM content_events " +
+                "WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC LIMIT ?",
+            arrayOf(start.toString(), end.toString(), limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(
+                ContentEvent(
+                    id = cursor.getLong(0),
+                    timestamp = cursor.getLong(1),
+                    pkg = cursor.getString(2) ?: "",
+                    event = cursor.getString(3) ?: "",
+                    title = cursor.getString(4) ?: "",
+                    author = cursor.getString(5) ?: "",
+                    extra = cursor.getString(6) ?: "",
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    fun recordsInRange(start: Long, end: Long): List<Record> {
+        val list = mutableListOf<Record>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, amount, category, merchant, note, timestamp, is_night FROM records " +
+                "WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC",
+            arrayOf(start.toString(), end.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(
+                Record(
+                    id = cursor.getLong(0),
+                    amount = cursor.getDouble(1),
+                    category = cursor.getString(2) ?: "",
+                    merchant = cursor.getString(3),
+                    note = cursor.getString(4),
+                    timestamp = cursor.getLong(5),
+                    isNight = cursor.getInt(6) == 1,
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    fun activityLogInRange(start: Long, end: Long, limit: Int = 80): List<ActivityLog> {
+        val list = mutableListOf<ActivityLog>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, timestamp, package_name, activity, what, detail, source FROM activity_log " +
+                "WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC LIMIT ?",
+            arrayOf(start.toString(), end.toString(), limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(
+                ActivityLog(
+                    id = cursor.getLong(0),
+                    timestamp = cursor.getLong(1),
+                    pkg = cursor.getString(2) ?: "?",
+                    activity = cursor.getString(3) ?: "",
+                    what = cursor.getString(4) ?: "",
+                    detail = cursor.getString(5) ?: "",
+                    source = cursor.getString(6) ?: "",
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    /** 某天记了几笔账（判断"今天有没有数据"用）。 */
+    fun recordCountInRange(start: Long, end: Long): Int {
+        val cursor = readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM records WHERE timestamp >= ? AND timestamp < ?",
+            arrayOf(start.toString(), end.toString())
+        )
+        val n = if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        cursor.close()
+        return n
+    }
+
+    fun frameCountInRange(start: Long, end: Long): Int {        val cursor = readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM frames WHERE timestamp >= ? AND timestamp < ?",
+            arrayOf(start.toString(), end.toString())
+        )
+        val n = if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        cursor.close()
+        return n
     }
 
     private fun countWhere(table: String, where: String?, args: Array<String>?): Int {
