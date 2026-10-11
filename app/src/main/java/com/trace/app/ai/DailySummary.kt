@@ -8,6 +8,7 @@ import com.trace.app.util.AppNames
 import com.trace.app.vlm.VlmEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.ZoneId
@@ -64,24 +65,20 @@ object DailySummary {
      * 很多小模型一旦拿到完整数据块就会忍不住重写、改数字、编金额，
      * 所以这里明确禁止它碰数字、只允许它接在事实后面说人话。
      */
-    const val POLISH_INSTRUCTION: String = """你是一位贴身的生活观察助手。下面给你的是今天的事实，已经写好了。
-你要做的只有一件事：接着这些事实，补一句观察和一句建议。
+    const val POLISH_INSTRUCTION: String = """你是一位贴身的生活观察助手。用户会给你今天的行为事实，事实已经写好了，你只做两件事：点出今天最值得注意的一点，再给一条明天能做的建议。
+
+输出格式：只输出一个 JSON 对象，键固定为 yihua 和 jianyi，两个值都是中文句子。
+{"yihua":"……","jianyi":"……"}
 
 规则：
-- 只输出你补的两句话，不要重复事实里的任何句子，不要改写它们，不要复述数字。
-- 不要写任何数字、金额、次数、时长（事实里已经有了）。
-- 不要标题、不要编号、不要 Markdown、不要写「总结」二字。
-- 两句合计不超过 80 字。
-- 第一句要说出今天最反常或最突出的一点（看得多还是少、留没留下东西、什么时段不对）。
-- 第二句要具体到「明天把哪件事换成哪件事」，落在今天真实出现过的应用、内容或时段上。
-- 严禁「注意休息」「合理安排时间」「利用碎片时间」「保持良好习惯」「调整心态」这类放之四海皆准的空话，也不要反过来劝他多刷。
-- 语气像懂主人的朋友：可以说实话、可以轻微调侃，但不要说教。
-
-参考写法（不要照抄）：
-- 好：刷得比平时快，点赞却只有一条，看的多、留下的少。
-- 好：明天试试把凌晨那段时间留给正在追的东西，别让它继续被短视频吃掉。
-- 坏：注意休息，合理安排时间。
-- 坏：利用碎片时间检查社交动态。"""
+- 只输出这个 JSON 本身。前后不要解释、不要注释、不要用代码块包裹。
+- yihua 不超过 40 个字，jianyi 不超过 40 个字。
+- 不许出现任何数字、金额、次数、时长，事实里已经有了。
+- 不许复述事实里的句子，不许编造事实里没出现过的应用、内容或事情。
+- 不许用「好：」「坏：」「观察：」「建议：」这类标签开头，直接从第一个字开始写句子。
+- 不许写「注意休息」「合理安排时间」「利用碎片时间」「保持良好习惯」这类放之四海皆准的空话，也不要反过来劝他多刷。
+- 不许解释你的思路、不许评价这些要求、不许输出括号注释。
+- 语气像懂主人的朋友：可以说实话、可以轻微调侃，但不要说教。"""
 
     /** 补两句阶段的上限（80 字 ≈ 120-160 token，留点余量）。 */
     private const val POLISH_TOKENS = 200
@@ -94,10 +91,16 @@ object DailySummary {
         val model: String,
         val stats: String,
         val error: String = "",
+        /** 字段化总结（JSON 文本），留给卡片分区渲染与周报聚合；模型没参与时为空。 */
+        val json: String = "",
     )
 
-    /** 喂给模型的完整数据块 + 其中挑好的【今日看点】。 */
-    data class Stats(val text: String, val highlights: List<String>)
+    /** 喂给模型的完整数据块 + 挑好的【今日看点】+ 今天真实出现过的应用名（判「是不是编的」用）。 */
+    data class Stats(
+        val text: String,
+        val highlights: List<String>,
+        val appNames: List<String> = emptyList(),
+    )
 
     private val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
 
@@ -261,7 +264,7 @@ object DailySummary {
             )
         }
 
-        return Stats(sb.toString(), highlights)
+        return Stats(sb.toString(), highlights, sys.apps.map { it.name })
     }
 
     /** Trace 自己、桌面、系统 UI 不算「主人在用手机」。 */
@@ -354,7 +357,7 @@ object DailySummary {
     ): Result {
         if (!force) {
             db.latestDigest(day)?.let {
-                return Result(true, day, it.text, it.engine, it.model, it.stats)
+                return Result(true, day, it.text, it.engine, it.model, it.stats, json = it.json)
             }
         }
 
@@ -375,24 +378,27 @@ object DailySummary {
                         )
                     }
                 )
-                db.addDigest(day, "cloud", model, text, stats)
+                db.addDigest(day, "cloud", model, text, stats, "")
                 Result(true, day, text, "cloud", model, stats)
             } catch (e: Exception) {
                 // 云端失败不留空档：退回端侧，保证「今天总有一份总结」。
-                localGenerate(ctx, db, day, stats, st.highlights)
+                localGenerate(ctx, db, day, stats, st.highlights, st.appNames)
             }
         }
-        return localGenerate(ctx, db, day, stats, st.highlights)
+        return localGenerate(ctx, db, day, stats, st.highlights, st.appNames)
     }
 
     /**
-     * 端侧：**事实段由代码写、模型只补两句**。
+     * 端侧：**事实段由代码写、模型只补一句观察 + 一句建议**，补的话以 JSON 字段交回。
      *
-     * 为什么不整段交给模型：2.4 GB 的小模型有三个改不掉的毛病——挑重点会漏、
-     * 抄数字会错（把 22 写成「二十两」、把 eighteen 写成英文）、建议会说空话。
-     * 实测四轮都在补这些洞。改成混合式之后，数字 100% 来自本机统计、看点 100% 覆盖，
-     * 模型只负责它最擅长的一段：照着事实给一句观察、一句建议。
-     * 模型失败（忙/输出空）时仍然交付事实段 —— 那本来就已经是一份能看的总结了。
+     * 为什么不整段交给模型：小模型的三个毛病改不掉——挑重点会漏、抄数字会错
+     * （把 22 写成「二十两」、把 eighteen 写成英文）、建议会说空话。
+     * 改成混合式之后：数字 100% 来自本机统计、看点 100% 覆盖，模型只负责它最擅长的语言部分。
+     *
+     * 模型这一侧还有两道闸（都是实测踩出来的）：
+     * ① 抄事实 → [echoesFact] 丢掉；② 编出今天没发生的事（早期版本编过「咖啡馆」）→
+     * [grounded] 要求它至少命中一个今天真实出现过的应用名或行为词，否则丢掉。
+     * 两道闸都拦掉时就只交付事实段，`model` 如实标成「本机统计」。
      */
     private suspend fun localGenerate(
         ctx: Context,
@@ -400,29 +406,90 @@ object DailySummary {
         day: String,
         stats: String,
         highlights: List<String>,
+        appNames: List<String>,
     ): Result {
-        val model = "MiniCPM-V 4.6 Q4_K_M"
+        // 「用哪颗脑子写的」从引擎问，别写死：屏幕理解用 VLM，写总结用用户选的文本模型。
+        val model = VlmEngine.chatModelName(ctx)
         val facts = factsText(highlights)
         if (facts.isBlank()) {
             // 连看点都挑不出来（今天几乎是空数据），那就没得总结。
             return Result(false, day, "", "local", model, stats, "今天的数据太少，没法总结")
         }
 
-        val ask = facts + "\n\n" +
-            "上面是今天的全部事实，已经写好了：不要改动、不要重复、不要改写上面的句子。" +
-            "请你在事实后面接着补两句：第一句点出今天最值得注意的一点，第二句给一条针对今天数据的具体建议。" +
-            "不要写任何数字（上面的数字已经够了），不要写标题和编号，直接写这两句话。"
+        val ask = "今天的全部事实（已经写好了）：\n" + facts +
+            "\n\n按格式要求输出那个 JSON。"
         val r = VlmEngine.ask(ctx, ask, maxTokens = POLISH_TOKENS, instruction = POLISH_INSTRUCTION)
-        var extra = if (r.ok) clean(r.answer) else ""
-        // 小模型偶尔会把事实段整段抄一遍 —— 抄了就丢掉，只保留事实段。
-        if (extra.isNotBlank() && (echoesFact(extra, facts) || extra.length > 200)) extra = ""
+        val (oneRaw, adviceRaw) = if (r.ok) parsePolish(clean(r.answer)) else ("" to "")
 
-        val text = if (extra.isBlank()) facts else facts + "\n" + extra
+        val one = if (oneRaw.isNotBlank() && oneRaw.length <= 60 &&
+            looksClean(oneRaw) && !echoesFact(oneRaw, facts) && grounded(oneRaw, appNames)
+        ) oneRaw else ""
+        val advice = if (adviceRaw.isNotBlank() && adviceRaw.length <= 80 &&
+            looksClean(adviceRaw) && !echoesFact(adviceRaw, facts) && grounded(adviceRaw, appNames)
+        ) adviceRaw else ""
+
+        val lines = mutableListOf(facts)
+        if (one.isNotBlank()) lines.add(one)
+        if (advice.isNotBlank()) lines.add(advice)
+        val text = lines.joinToString("\n")
+        val json = digestJson(one, advice)
         // 模型没参与时如实标注，不冒名。
-        val modelName = if (extra.isBlank()) "本机统计" else model
-        db.addDigest(day, "local", modelName, text, stats)
-        return Result(true, day, text, "local", modelName, stats)
+        val modelName = if (one.isBlank() && advice.isBlank()) "本机统计" else model
+        db.addDigest(day, "local", modelName, text, stats, json)
+        return Result(true, day, text, "local", modelName, stats, json = json)
     }
+
+    /** 存库用的字段化总结：{ "yihua":…, "jianyi":…, "liangdian":[…], "guanzhu":[…] }。 */
+    private fun digestJson(one: String, advice: String): String {
+        val sb = StringBuilder("{")
+        sb.append("\"yihua\":").append(JSONObject.quote(one))
+        sb.append(",\"jianyi\":").append(JSONObject.quote(advice))
+        sb.append("}")
+        return sb.toString()
+    }
+
+    /**
+     * 从模型输出里抠出 yihua / jianyi。
+     *
+     * 小模型三种坏输出都在这里兜住：被 ```json 围栏包住、前后带解释、抄了模板里的标签
+     * （实测 MiniCPM5-2B 会把 few-shot 的「好：」当句子开头照抄，所以提示词里已经不放假例子了）。
+     */
+    private fun parsePolish(raw: String): Pair<String, String> {
+        if (raw.isBlank()) return "" to ""
+        var s = raw.trim()
+        if (s.startsWith("```")) {
+            s = s.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        }
+        val a = s.indexOf('{')
+        val b = s.lastIndexOf('}')
+        if (a >= 0 && b > a) s = s.substring(a, b + 1)
+        return try {
+            val o = JSONObject(s)
+            o.optString("yihua").trim() to o.optString("jianyi").trim()
+        } catch (t: Throwable) {
+            "" to ""
+        }
+    }
+
+    /** 拒绝标签开头（「好：」「注：」）和括号注释——都是模型自说自话的痕迹。 */
+    private val LABEL_RE = Regex("^\\s*(好|坏|观察|建议|一句话|总结|注|备注)\\s*[:：]")
+
+    private fun looksClean(s: String): Boolean =
+        !LABEL_RE.containsMatchIn(s) &&
+            !s.contains("（注") && !s.contains("(注") &&
+            !s.contains("无法生成") && !s.contains("违反") && !s.contains("指令")
+
+    /**
+     * 判断这句话是不是在讲今天真发生过的事：至少要命中一个真实应用名或一个行为词。
+     * 命中不了就认为它在编（实测编出过「早起第一杯水」「把咖啡换成薄荷茶」）。
+     */
+    private fun grounded(s: String, appNames: List<String>): Boolean =
+        (appNames + BEHAVIOR_WORDS).any { it.length >= 2 && s.contains(it) }
+
+    private val BEHAVIOR_WORDS = listOf(
+        "屏幕时间", "短视频", "视频", "点赞", "收藏", "取消点赞", "凌晨", "深夜", "上午", "下午",
+        "晚上", "桌面", "相机", "游戏", "聊天", "购物", "外卖", "音乐", "地图", "阅读", "浏览器",
+    )
 
     /** 把挑好的看点连成一段事实（数字全部来自本机统计，模型碰不到）。 */
     private fun factsText(highlights: List<String>): String {

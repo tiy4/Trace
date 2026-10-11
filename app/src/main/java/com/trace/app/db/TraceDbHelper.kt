@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.trace.app.model.Record
 
-class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", null, 6) {
+class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", null, 7) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -61,6 +61,10 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
             db.execSQL(createDailyDigestSql())
             db.execSQL(createChatMessageSql())
         }
+        if (oldVersion < 7) {
+            // v7：总结的字段化版本（{yihua, jianyi}），给卡片分区渲染与以后做周报聚合用。
+            db.execSQL("ALTER TABLE daily_digest ADD COLUMN json TEXT")
+        }
     }
 
     /**
@@ -78,7 +82,8 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
             engine TEXT,
             model TEXT,
             text TEXT NOT NULL,
-            stats TEXT
+            stats TEXT,
+            json TEXT
         )
         """.trimIndent()
 
@@ -585,9 +590,18 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
         val model: String,
         val text: String,
         val stats: String,
+        /** v7：字段化总结（JSON 文本，形如 {"yihua":…,"jianyi":…}）；老数据为空串。 */
+        val json: String,
     )
 
-    fun addDigest(day: String, engine: String, model: String, text: String, stats: String): Long {
+    fun addDigest(
+        day: String,
+        engine: String,
+        model: String,
+        text: String,
+        stats: String,
+        json: String,
+    ): Long {
         val values = ContentValues().apply {
             put("day", day)
             put("created_at", System.currentTimeMillis())
@@ -595,6 +609,7 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
             put("model", model)
             put("text", text)
             put("stats", stats)
+            put("json", json)
         }
         return writableDatabase.insert("daily_digest", null, values)
     }
@@ -607,12 +622,13 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
         model = cursor.getString(4) ?: "",
         text = cursor.getString(5) ?: "",
         stats = cursor.getString(6) ?: "",
+        json = cursor.getString(7) ?: "",
     )
 
     /** 某天最新的一份总结。 */
     fun latestDigest(day: String): Digest? {
         val cursor = readableDatabase.rawQuery(
-            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+            "SELECT id, day, created_at, engine, model, text, stats, json FROM daily_digest " +
                 "WHERE day = ? ORDER BY created_at DESC LIMIT 1",
             arrayOf(day)
         )
@@ -624,7 +640,7 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
     fun recentDigests(limit: Int = 14): List<Digest> {
         val list = mutableListOf<Digest>()
         val cursor = readableDatabase.rawQuery(
-            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+            "SELECT id, day, created_at, engine, model, text, stats, json FROM daily_digest " +
                 "ORDER BY created_at DESC LIMIT ?",
             arrayOf(limit.toString())
         )
@@ -644,7 +660,7 @@ class TraceDbHelper(context: Context) : SQLiteOpenHelper(context, "trace.db", nu
     fun digestsSince(fromDay: String, limit: Int = 400): List<Digest> {
         val list = mutableListOf<Digest>()
         val cursor = readableDatabase.rawQuery(
-            "SELECT id, day, created_at, engine, model, text, stats FROM daily_digest " +
+            "SELECT id, day, created_at, engine, model, text, stats, json FROM daily_digest " +
                 "WHERE day >= ? ORDER BY day DESC, created_at DESC LIMIT ?",
             arrayOf(fromDay, limit.toString())
         )

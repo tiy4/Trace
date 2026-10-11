@@ -158,6 +158,21 @@ data class ModelInfo(
                 hfRepo = "openbmb/MiniCPM5-2B-GGUF",
                 msRepo = "OpenBMB/MiniCPM5-2B-GGUF"
             ),
+            // Qwen3-4B: text-only dense model, Alibaba's official GGUF repo
+            // (HF primary + ModelScope backup; both resolve as of 2026-10-11,
+            // Q4_K_M = 2497280256 bytes). Added for Trace's summary / chat
+            // path: the vision model's language backbone is only 752M and
+            // writes poor Chinese. Qwen3 ships a thinking mode — the demo's
+            // toggle is pushed via setEnableThinkingNative(), and Trace
+            // additionally strips any  thinking block defensively.
+            ModelInfo(
+                id = "qwen3-4b",
+                displayName = "Qwen3-4B (Q4_K_M)",
+                descriptionResName = "model_desc_qwen3_4b",
+                ggufFileName = "Qwen3-4B-Q4_K_M.gguf",
+                hfRepo = "Qwen/Qwen3-4B-GGUF",
+                msRepo = "Qwen/Qwen3-4B-GGUF"
+            ),
             // VoxCPM2 — text-to-speech model, ~2B params, 48kHz output.
             // Two GGUF files: a BaseLM (the MiniCPM-4 based language model)
             // and an Acoustic bundle (FSQ + ResidualLM + LocEnc + LocDiT +

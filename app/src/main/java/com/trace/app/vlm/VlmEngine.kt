@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.minicpm_v_demo.LlamaEngine
 import com.example.minicpm_v_demo.LlamaState
+import com.example.minicpm_v_demo.ModelInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,6 +80,15 @@ object VlmEngine {
     @Volatile private var engine: LlamaEngine? = null
     private var unloadJob: Job? = null
 
+    /**
+     * 当前 native 引擎里装的是哪颗脑子（模型 id）。
+     *
+     * 一个 `LlamaEngine` 只能装一份权重，所以「屏幕理解用 VLM、写总结用文本模型」
+     * 是靠**换模型**实现的：先 `unloadModel()` 再 `loadModel(另一份 gguf)`。
+     * 实测冷加载 ~1.3 s（视觉模型），代价可以接受，没必要两个模型同时占内存。
+     */
+    @Volatile private var loadedId: String? = null
+
     @Volatile var busy: Boolean = false
         private set
 
@@ -89,11 +99,28 @@ object VlmEngine {
 
     fun isModelLoaded(): Boolean = engine?.state?.value is LlamaState.ModelReady
 
+    /**
+     * 写总结 / 聊天实际会用哪颗脑子。
+     *
+     * 优先用户选的纯文本模型（MiniCPM5-2B / Qwen3-4B …）；**没下载就回落到视觉模型**
+     * ——视觉模型也能写字，只是写得差，总比整个功能不可用好。屏幕理解不受影响，
+     * 它固定用 [VlmPaths.MODEL_ID]。
+     */
+    fun chatModel(ctx: Context): ModelInfo {
+        val picked = TextModel.selected(ctx)
+        if (TextModel.ready(ctx, picked)) return picked
+        return TextModel.byId(TextModel.VISION_ID) ?: picked
+    }
+
+    /** 归档/界面要显示「用哪个模型写的」。 */
+    fun chatModelName(ctx: Context): String = chatModel(ctx).displayName
+
     /** 立刻释放模型（用户手动释放，或空闲到点）。 */
     suspend fun unload() {
         val e = engine ?: return
         try {
             if (e.state.value is LlamaState.ModelReady) e.unloadModel()
+            loadedId = null
             lastSummary = "已释放模型"
         } catch (t: Throwable) {
             Log.w(TAG, "unload failed", t)
@@ -111,6 +138,7 @@ object VlmEngine {
             Log.w(TAG, "destroy failed", t)
         }
         engine = null
+        loadedId = null
         lastSummary = "已销毁引擎"
     }
 
@@ -136,7 +164,7 @@ object VlmEngine {
         var prefillMs = 0L
         var genMs = 0L
         return try {
-            loadMs = ensureLoaded(ctx)
+            loadMs = ensureLoaded(ctx, TextModel.VISION_ID)
             val e = engine ?: throw IllegalStateException("引擎未就绪")
 
             e.setImageMaxSliceNums(s)
@@ -199,8 +227,9 @@ object VlmEngine {
 
         var loadMs = 0L
         var genMs = 0L
+        val chat = chatModel(ctx)
         return try {
-            loadMs = ensureLoaded(ctx)
+            loadMs = ensureLoaded(ctx, chat.id)
             val e = engine ?: throw IllegalStateException("引擎未就绪")
             e.setEnableThinking(false)
             e.clearContext()
@@ -214,10 +243,11 @@ object VlmEngine {
                 }
             }
             genMs = System.currentTimeMillis() - t2
-            val answer = sb.toString().trim()
+            // Qwen3 这类模型会先吐  thinking…<｜end▁of▁thinking｜>，裁掉再交给调用方。
+            val answer = stripThinking(sb.toString())
 
             resetContext(e)
-            lastSummary = "chat 生成=${genMs}ms 长度=${answer.length}"
+            lastSummary = "chat 生成=${genMs}ms 长度=${answer.length} 模型=${chat.id}"
             Log.i(TAG, "$lastSummary answer=${answer.take(80)}")
             VlmResult(true, s, loadMs, 0L, genMs, answer)
         } catch (t: Throwable) {
@@ -241,9 +271,31 @@ object VlmEngine {
         }
     }
 
-    private suspend fun ensureLoaded(ctx: Context): Long {
+    /**
+     * 确保 native 引擎里装的是 [modelId] 这颗脑子，返回（含换模型在内的）加载耗时。
+     *
+     * 换模型 = 先卸后装：一个 [LlamaEngine] 只能持有一份权重。视觉模型要
+     * mmproj，纯文本模型传 null（`loadModel` 的 mmproj 参数本来就可空）。
+     */
+    private suspend fun ensureLoaded(ctx: Context, modelId: String): Long {
         val t0 = System.currentTimeMillis()
-        val e = engine ?: LlamaEngine.getInstance(ctx).also { engine = it }
+        var e = engine ?: LlamaEngine.getInstance(ctx).also { engine = it }
+
+        if (loadedId != null && loadedId != modelId && e.state.value is LlamaState.ModelReady) {
+            Log.i(TAG, "换模型：$loadedId → $modelId")
+            var ok = true
+            try {
+                e.unloadModel()
+            } catch (t: Throwable) {
+                ok = false
+                Log.w(TAG, "unloadModel 失败，改为重建引擎", t)
+            }
+            loadedId = null
+            if (!ok) {
+                destroy()
+                e = engine ?: LlamaEngine.getInstance(ctx).also { engine = it }
+            }
+        }
 
         if (e.state.value !is LlamaState.ModelReady) {
             var waited = 0L
@@ -258,17 +310,49 @@ object VlmEngine {
                 delay(100L)
                 waited += 100L
             }
-            val gguf = VlmPaths.gguf(ctx)
-                ?: throw IllegalStateException("主模型文件缺失：${VlmPaths.internalDir(ctx)}")
-            val mmproj = VlmPaths.mmproj(ctx)
-                ?: throw IllegalStateException("视觉投影文件缺失：${VlmPaths.internalDir(ctx)}")
 
-            Log.i(TAG, "loading model ${gguf.absolutePath}")
-            e.loadModel(gguf.absolutePath, mmproj.absolutePath)
+            val ggufPath: String
+            val mmprojPath: String?
+            if (modelId == TextModel.VISION_ID) {
+                ggufPath = VlmPaths.gguf(ctx)?.absolutePath
+                    ?: throw IllegalStateException("主模型文件缺失：${VlmPaths.internalDir(ctx)}")
+                mmprojPath = VlmPaths.mmproj(ctx)?.absolutePath
+                    ?: throw IllegalStateException("视觉投影文件缺失：${VlmPaths.internalDir(ctx)}")
+            } else {
+                val m = TextModel.byId(modelId)
+                    ?: throw IllegalStateException("未知模型：$modelId")
+                val f = TextModel.find(ctx, m)
+                    ?: throw IllegalStateException("文字模型未下载：${m.displayName}")
+                ggufPath = f.absolutePath
+                mmprojPath = null
+            }
+
+            Log.i(TAG, "loading model ($modelId) $ggufPath")
+            e.loadModel(ggufPath, mmprojPath)
+            loadedId = modelId
             // 不调用 setSystemPrompt()：视觉路径下原生实现会 SIGABRT（见 INSTRUCTION 注释）。
-            Log.i(TAG, "model ready (${System.currentTimeMillis() - t0} ms)")
+            Log.i(TAG, "model ready ($modelId, ${System.currentTimeMillis() - t0} ms)")
         }
         return System.currentTimeMillis() - t0
+    }
+
+    /**
+     * 裁掉思考模型（Qwen3 等）的 ` thinking…` 段。
+     *
+     * 原生侧没有 chat template 开关，`setEnableThinking(false)` 对小众模型不一定生效，
+     * 所以这里兜一层：成对出现的整段删掉；**只开不闭**（token 用光还在想）则整条丢弃，
+     * 因为剩下的半截思考过程不是答案。
+     */
+    private fun stripThinking(raw: String): String {
+        val s = raw.trim()
+        val open = s.indexOf(" thinking")
+        val close = s.indexOf("<｜end▁of▁thinking｜>")
+        return when {
+            open < 0 && close < 0 -> s
+            open >= 0 && close > open -> (s.substring(0, open) + s.substring(close + 8)).trim()
+            open >= 0 && close < 0 -> s.substring(0, open).trim().ifBlank { "" }
+            else -> s.substring(close + 8).trim()
+        }
     }
 
     private fun scheduleIdleUnload() {
