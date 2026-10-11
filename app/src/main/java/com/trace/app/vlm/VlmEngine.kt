@@ -60,6 +60,30 @@ object VlmEngine {
     private const val CHAT_MAX_TOKENS = 320
 
     /**
+     * 文本模型的上下文窗口（token）。
+     *
+     * 实测值来自 native 的 llama_context 日志：`n_ctx = 4096`（n_batch 2048）。
+     * native 没有暴露 token 计数（JNI 里只有 load/prepare/processUserPrompt…），
+     * 本机也没装 NDK、改不了 .so，所以这里**只能用字符估算**，UI 上也如实标「≈」。
+     */
+    private const val CTX_TOKENS = 4096
+
+    /**
+     * 估算文本占多少 token（**估算，不是精确值**）：
+     * 中日韩字符按 0.8 token/字、其余字符按 1 token/3 字符——这是 Qwen 系 BPE 的经验折算，
+     * 用来给用户一个「这轮吃掉了窗口的百分之几」的量级感，不做精确断言。
+     */
+    private fun estTokens(s: String): Int {
+        var cjk = 0
+        var other = 0
+        for (ch in s) {
+            val c = ch.code
+            if (c in 0x4E00..0x9FFF || c in 0x3400..0x4DBF || c in 0x3000..0x303F || c in 0xFF00..0xFFEF) cjk++ else other++
+        }
+        return (cjk * 0.8).toInt() + other / 3
+    }
+
+    /**
      * 聊天页的「系统指令」。
      *
      * 同样不能走原生 `processSystemPrompt()`（见 [INSTRUCTION] 的崩溃注释），
@@ -103,6 +127,9 @@ object VlmEngine {
         private set
 
     @Volatile var lastSummary: String = "未使用"
+
+    /** 最近一轮的上下文占用估算（给 UI 直接显示，如「上下文 ≈ 640/4096（15%）」）。 */
+    @Volatile var lastCtxText: String = ""
         private set
 
     fun isBusy(): Boolean = busy
@@ -273,7 +300,10 @@ object VlmEngine {
             val answer = stripThinking(sb.toString())
 
             resetContext(e)
-            lastSummary = "chat 生成=${genMs}ms 长度=${answer.length} 模型=${chat.id}"
+            // 上下文占用：这轮提示词 + 回答一共折多少 token（估算），给 UI 显示用。
+            val used = estTokens(body) + estTokens(answer)
+            lastCtxText = "上下文 ≈ ${used}/${CTX_TOKENS}（${used * 100 / CTX_TOKENS}%）"
+            lastSummary = "chat 生成=${genMs}ms 长度=${answer.length} 模型=${chat.id} · $lastCtxText"
             Log.i(TAG, "$lastSummary answer=${answer.take(80)}")
             VlmResult(true, s, loadMs, 0L, genMs, answer)
         } catch (t: Throwable) {

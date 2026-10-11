@@ -30,8 +30,11 @@ object TextModel {
     /** 视觉模型 id，用来判断引擎里当前装的是哪颗脑子。 */
     const val VISION_ID = VlmPaths.MODEL_ID
 
-    /** 候选顺序 = 设置页展示顺序；id 必须存在于 [ModelInfo.AVAILABLE_MODELS]。 */
-    private val ORDER = listOf("minicpm5-2b", "qwen3-4b", "minicpm5-0.9b")
+    /**
+     * 候选顺序 = 设置页展示顺序，**第一个就是默认**（没选过时 [selected] 回落到它）。
+     * 2026-10-11 用户定：默认挂 Qwen3-4B（写得更像回事，代价是慢 5-7 倍，设置里可随时切回 2B）。
+     */
+    private val ORDER = listOf("qwen3-4b", "minicpm5-2b", "minicpm5-0.9b")
 
     /**
      * 已知的文件大小（字节），用于「下载前先看代价」。

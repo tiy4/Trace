@@ -275,11 +275,13 @@ class ChatActivity : AppCompatActivity() {
             val who =
                 if (vision) "端侧 · 视觉模型"
                 else "端侧 · " + VlmEngine.chatModelName(this@ChatActivity)
+            // 上下文占用只对文本模型有意义（视觉那侧还含图片 token，估算不了就不显示）。
+            val ctxTail = if (vision) "" else VlmEngine.lastCtxText.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
             val answer = when {
                 !r.ok && r.error == "busy" -> "🧠 端侧模型正忙着（正在跑屏幕理解）。等它跑完这一帧再问一次。"
                 !r.ok -> "❌ 端侧模型没跑通：${r.error}\n\n可以试：\n· 首页「端侧屏幕理解」里先加载一次模型\n· 或 ⚙️ 切到云端大脑"
                 bubble.text.toString().isBlank() -> "（模型没有输出内容）"
-                else -> "${bubble.text}\n\n— $who · ${String.format(Locale.CHINA, "%.1f", sec)} s"
+                else -> "${bubble.text}\n\n— $who · ${String.format(Locale.CHINA, "%.1f", sec)} s$ctxTail"
             }
             bubble.text = answer
             if (r.ok) {
