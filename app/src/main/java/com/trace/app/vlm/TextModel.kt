@@ -36,7 +36,8 @@ object TextModel {
      * 同日追加 Qwen3-8B：用户要求「先保证质量，速度慢点没事」→ 给一个更大的备选，
      * 总结是熄屏后台写的，单次 4-5 分钟可以接受。
      */
-    private val ORDER = listOf("qwen3-4b", "qwen3-8b", "minicpm5-2b", "minicpm5-0.9b")
+    private val ORDER =
+        listOf("qwen3-4b-2507", "qwen3-4b", "qwen3-8b", "minicpm5-2b", "minicpm5-0.9b")
 
     /**
      * 已知的文件大小（字节），用于「下载前先看代价」。
@@ -46,6 +47,7 @@ object TextModel {
     private val HINT_BYTES = mapOf(
         "minicpm5-2b" to 1_561_318_368L,
         "qwen3-4b" to 2_497_280_256L,
+        "qwen3-4b-2507" to 2_497_281_120L,
     )
 
     val candidates: List<ModelInfo> = ORDER.mapNotNull { id ->

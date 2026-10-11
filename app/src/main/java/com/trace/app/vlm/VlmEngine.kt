@@ -286,8 +286,10 @@ object VlmEngine {
             val sb = StringBuilder()
             val t2 = System.currentTimeMillis()
             // Qwen3 系列默认先吐一大段思考（慢、对总结/问答没价值），用它自己的 soft switch 关掉。
+            // Qwen3-4B-Instruct-2507 是纯非思考模型，它没有 enable_thinking 开关，
+            // 「/no_think」这个软开关对它只会变成提示词里的噪声 → 只在 2504 系加。
             val body =
-                if (chat.id.startsWith("qwen3")) instruction + prompt + " /no_think"
+                if (chat.id.startsWith("qwen3") && !chat.id.contains("2507")) instruction + prompt + " /no_think"
                 else instruction + prompt
             e.sendUserPrompt(body, maxTokens).collect { tok ->
                 if (tok.isNotEmpty()) {

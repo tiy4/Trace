@@ -185,6 +185,23 @@ data class ModelInfo(
                 hfRepo = "Qwen/Qwen3-8B-GGUF",
                 msRepo = "Qwen/Qwen3-8B-GGUF"
             ),
+            // Qwen3-4B-Instruct-2507: the 2025-07 non-thinking refresh of the
+            // *same* Qwen3-4B architecture (gguf metadata: architecture=qwen3,
+            // context_length=262144), so the native loader needs no new arch
+            // support. Almost the same size as the 2504 Qwen3-4B
+            // (2497281120 vs 2497280256 bytes) but trained without a thinking
+            // mode: it answers directly instead of burning tokens inside
+            //  thinking. Served by unsloth's GGUF repo on both HF and
+            // ModelScope (Qwen's own 2507 GGUF repo does not exist; their
+            // Qwen2.5-7B ggufs are multi-part and unusable here).
+            ModelInfo(
+                id = "qwen3-4b-2507",
+                displayName = "Qwen3-4B-Instruct-2507 (Q4_K_M)",
+                descriptionResName = "model_desc_qwen3_4b_2507",
+                ggufFileName = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                hfRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+                msRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+            ),
             // VoxCPM2 — text-to-speech model, ~2B params, 48kHz output.
             // Two GGUF files: a BaseLM (the MiniCPM-4 based language model)
             // and an Acoustic bundle (FSQ + ResidualLM + LocEnc + LocDiT +
