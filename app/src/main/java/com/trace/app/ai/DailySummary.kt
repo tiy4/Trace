@@ -76,13 +76,18 @@ object DailySummary {
 
 硬性要求（逐条满足）：
 1. liangdian 写 2-4 条，每条不超过 60 字，且必须同时做到：
-   - 至少一条用「不是 A，是 B：具体数据」这种把两件事摆在一起的说法，A 和 B 都得是事实里出现过的应用、内容或行为；
+   - 至少一条把两件**同类**的东西摆在一起对比，用「不是 A，是 B：具体数据」的句式；
+     A 和 B 必须从事实里【可以对比的同类项】那几条里挑（应用对应用、时段对时段、主题对主题），
+     不许拿一个应用去比一类内容，也不许提没在里面出现过的应用名；那几条都不合适就别硬写这一条；
    - 至少一条用「」引出事实里【今天的主题】给出的一个主题词，说清今天看的东西集中在什么主题上；
    - 每条都要带上事实里给出的数字。
-2. guanzhu 写 0-3 条，每条不超过 60 字，指出矛盾、盲区或反常；
-   事实里出现「平均每次 N 秒」且 N 小于 10 时，必须有一条说破这是在「扫」不是在看。
-3. jianyi 写一条明天能做的，不超过 40 字，必须点名事实里的一个应用或一条内容。
-4. yihua 一句话概括今天，不超过 40 字，不要复述数字。
+2. guanzhu 写 1-3 条，每条不超过 60 字，指出矛盾、盲区或反常：
+   - 只有事实里【打开方式】**明确标了「（点开就关）」**的应用，才能说它是「扫」不是「看」；
+     没标的应用（平均每次几十秒以上）不许说「扫」，只能照实说「平均每次 N 秒」；
+   - 事实里【消费】写「今天没有记账」时，必须有一条讲这件事（带上昨天花了多少或刷到几条花钱内容）。
+3. jianyi 写一条明天能做的，不超过 40 字，必须点名事实里的一个应用或一条内容；
+   只能往「少看、换着看、看点别的、拿去做别的事」方向建议，绝对不许建议他多刷、多看、继续看。
+4. yihua 一句话概括今天，不超过 40 字，不要复述数字；能用「不是 A，是 B」把今天最占时间的那件事说清最好。
 
 数字与事实：
 - 数字只能照抄事实里已经给出的，不许换算、不许四舍五入、不许新造。
@@ -92,6 +97,7 @@ object DailySummary {
 
 格式与语气：
 - 只输出 JSON 本身：不要解释、不要注释、不要代码块，不要用「好：」「观察：」这类标签开头。
+- yihua 和 liangdian 不要出现重复的句子，同一个意思只说一次。
 - 语气像懂主人的朋友：可以说实话、可以轻微调侃，但不要说教。"""
 
     /** 写解读阶段的上限（四字段合计 250 字左右 ≈ 200 token，留余量）。 */
@@ -179,6 +185,22 @@ object DailySummary {
             )
         }
 
+        // ---- 打开方式（扫 vs 读）----
+        // 之前只把「平均每次 N 秒」附在应用行末尾，模型会把「扫」安到别的应用上
+        // （实测安到「凌晨 21 分钟」那次）。抽成单独一块、把结论写在数字旁边，
+        // 归因就落在正确的应用上。
+        val scrollers = topApps.filter { it.opens >= 20 && it.ms > 0 }
+        if (scrollers.isNotEmpty()) {
+            sb.appendLine(
+                "【打开方式】（只有标了「（点开就关）」的才算在扫，没标的按平均每次多少秒照实说）" +
+                    scrollers.joinToString(" · ") { a ->
+                        val per = a.ms / a.opens / 1000
+                        a.name + " 打开 " + a.opens + " 次 / 共 " + dur(a.ms) +
+                            " = 平均每次 " + per + " 秒" + (if (per < 10) "（点开就关）" else "")
+                    }
+            )
+        }
+
         // ---- 在干什么（去重计数）----
         // 过滤掉桌面/自己：那些是系统噪声，不是「主人在干什么」。
         val acts = db.activityLogInRange(start, end, limit = 200)
@@ -201,26 +223,27 @@ object DailySummary {
             "VIDEO_CHANGED" to "换视频", "LIKE" to "点赞", "UNLIKE" to "取消点赞",
             "SAVE" to "收藏", "UNSAVE" to "取消收藏"
         )
+        val contentEvents = db.contentEventsInRange(start, end, limit = 200)
+        // 样本只取内容事件里的真实标题（抖音/小红书这类），
+        // 别再拿 activity_log 的界面文本——那是别的 App 自己的文案，纯噪声。
+        // 条数从 3 提到 8：只给 2-3 条时模型写不出「今天在看什么」这类归纳，
+        // 而「内容的主题」正是总结里最有信息量的部分。
+        // 提到 if 外面：消费那段也要用它（数一下今天刷到几条花钱/赚钱的内容）。
+        val samples = contentEvents
+            .map { (if (it.author.isBlank()) "" else it.author + "：") + it.title }
+            .filter { it.length > 6 }
+            .map { it.take(60) }
+            .distinct()
+            .take(8)
+        val themes = themesOf(samples)
         if (content.isNotEmpty()) {
             sb.appendLine(
                 "【内容行为】" + content.entries.sortedByDescending { it.value }
                     .joinToString(" · ") { "${kind[it.key] ?: it.key} ${it.value} 次" }
             )
-            val contentEvents = db.contentEventsInRange(start, end, limit = 200)
-            // 样本只取内容事件里的真实标题（抖音/小红书这类），
-            // 别再拿 activity_log 的界面文本——那是别的 App 自己的文案，纯噪声。
-            // 条数从 3 提到 8：只给 2-3 条时模型写不出「今天在看什么」这类归纳，
-            // 而「内容的主题」正是总结里最有信息量的部分。
-            val samples = contentEvents
-                .map { (if (it.author.isBlank()) "" else it.author + "：") + it.title }
-                .filter { it.length > 6 }
-                .map { it.take(60) }
-                .distinct()
-                .take(8)
             if (samples.isNotEmpty()) {
                 sb.appendLine("【今天看到的内容】（标题原文，判断他在看什么用）")
                 samples.forEachIndexed { i, t -> sb.appendLine("${i + 1}. $t") }
-                val themes = themesOf(samples)
                 if (themes.isNotEmpty()) {
                     sb.appendLine("【今天的主题】（代码已从上面标题归纳好，正文必须引用其中一个）")
                     sb.appendLine(themes.joinToString(" / ") { "${it.first}（${it.second} 条）" })
@@ -238,9 +261,20 @@ object DailySummary {
         }
 
         // ---- 消费 ----
+        // 昨日消费要先算：今天没记账时，「昨天花了多少」+「今天刷到几条花钱内容」
+        // 才是模型能写的那句对照（「刷到最容易掏钱的内容，你一笔没下」）。
+        // 只写「今天没有记账」，模型就只会把这个事实复述一遍。
+        val (pStart, pEnd) = dayRange(LocalDate.parse(day).minusDays(1).toString())
+        val prevTotal = usage.dayUsage(pStart, pEnd, topN = 1).totalMs
+        val prevSpend = db.recordsInRange(pStart, pEnd).sumOf { it.amount }
         val records = db.recordsInRange(start, end)
         if (records.isEmpty()) {
-            sb.appendLine("【消费】今天没有记账")
+            val money = samples.count { t -> MONEY_KEYS.any { t.contains(it) } }
+            sb.appendLine(
+                "【消费】今天没有记账" +
+                    (if (prevSpend > 0) "（昨天 ¥" + "%.2f".format(prevSpend) + "）" else "") +
+                    (if (money > 0) "；但今天刷到的内容里有 $money 条是关于花钱/赚钱/省钱的" else "")
+            )
         } else {
             val sum = records.sumOf { it.amount }
             val max = records.maxByOrNull { it.amount }
@@ -270,9 +304,6 @@ object DailySummary {
         if (frames > 0) sb.appendLine("【屏幕理解】今天存了 $frames 张关键帧")
 
         // ---- 昨日对比 ----
-        val (pStart, pEnd) = dayRange(LocalDate.parse(day).minusDays(1).toString())
-        val prevTotal = usage.dayUsage(pStart, pEnd, topN = 1).totalMs
-        val prevSpend = db.recordsInRange(pStart, pEnd).sumOf { it.amount }
         if (prevTotal > 0 || prevSpend > 0) {
             val cmp = if (prevTotal > 0) {
                 val pct = (sys.totalMs - prevTotal) * 100.0 / prevTotal
@@ -283,6 +314,15 @@ object DailySummary {
             // 注意：cmp 里可能带 %（上面 %+.0f%% 格式化后的产物），
             // 这里必须拼字符串而不是再 .format()，否则会 UnknownFormatConversionException。
             sb.appendLine("【昨日对比】" + cmp + " · 消费昨日 ¥" + "%.2f".format(prevSpend))
+        }
+
+        // 同类对比也由代码配好：模型被要求写「不是 A，是 B」时会把两类东西乱配
+        // （实测写出过「不是微信，是剧集：17 次王者荣耀」）。给它现成的同类对标，
+        // 它只负责挑一条、把话说顺。
+        val pairs = comparePairs(topApps, slotNames, sys.slots, themes, prevSpend, records.isEmpty())
+        if (pairs.isNotEmpty()) {
+            sb.appendLine("【可以对比的同类项】（写「不是 A，是 B」时只能从这几条里挑，不要自己乱配）")
+            pairs.forEach { sb.appendLine("· $it") }
         }
 
         // 把「最值得写的几条」在代码里挑好、放在最前面。
@@ -477,14 +517,21 @@ object DailySummary {
         }
 
         val one = p.yihua.takeIf { accept(it, 60, true) } ?: ""
-        val liang = p.liangdian.filter { accept(it, 90, false) }.take(4)
-        val guan = p.guanzhu.filter { accept(it, 90, false) }.take(3)
-        val advice = p.jianyi.takeIf { accept(it, 60, false) } ?: ""
+        // 模型偶尔把同一句话原样塞进 yihua 和 liangdian（实测出现过），去重。
+        val liang = p.liangdian
+            .filter { accept(it, 90, false) && !sameish(it, one) }
+            .distinct()
+            .take(4)
+        val guan = p.guanzhu.filter { accept(it, 90, false) }.distinct().take(3)
+        // 「明天别忘了抽时间在抖音看看」——实测 MiniCPM5-2B 真写出过这种劝多刷的建议，
+        // 方向和整个产品相反，宁可不要这条建议。
+        val advice = p.jianyi.takeIf { accept(it, 60, false) && !pushesMore(it) } ?: ""
         android.util.Log.i(
             "TraceVlm",
             "闸门 liang=" + p.liangdian.joinToString(" | ") { why(it, 90, false) } +
                 " guan=" + p.guanzhu.joinToString(" | ") { why(it, 90, false) } +
-                " yihua=" + why(p.yihua, 60, true) + " jianyi=" + why(p.jianyi, 60, false) +
+                " yihua=" + why(p.yihua, 60, true) +
+                " jianyi=" + why(p.jianyi, 60, false) + (if (pushesMore(p.jianyi)) "(劝多刷)" else "") +
                 " raw=" + p.liangdian.joinToString(";") + " ~~ " + p.guanzhu.joinToString(";") + " ~~ " + p.jianyi
         )
         val modelUsed = one.isNotBlank() || liang.isNotEmpty() || guan.isNotEmpty() || advice.isNotBlank()
@@ -559,8 +606,37 @@ object DailySummary {
         }
     }
 
+    /** 两句话是不是一个意思：去标点后完全相等、互相包含，或前 8 字一样。 */
+    private fun sameish(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        val x = a.replace(Regex("[\\s，。；：、！？·（）()]"), "")
+        val y = b.replace(Regex("[\\s，。；：、！？·（）()]"), "")
+        if (x == y || x.contains(y) || y.contains(x)) return true
+        return x.length >= 8 && y.length >= 8 && x.take(8) == y.take(8)
+    }
+
     /** 拒绝标签开头（「好：」「注：」）和括号注释——都是模型自说自话的痕迹。 */
     private val LABEL_RE = Regex("^\\s*(好|坏|观察|建议|一句话|总结|注|备注)\\s*[:：]")
+
+    /**
+     * 劝人多看/多刷的建议一律不要。
+     * 实测 MiniCPM5-2B 写过「明天别忘了抽时间在抖音看看」——产品是帮他看清自己，
+     * 不是帮他刷得更久。只认「再刷一点」的句式，不误伤「少看/换着看」。
+     */
+    private val PUSH_MORE_RE =
+        Regex("(多|继续|接着|再|抽时间|花点时间|挤出时间|腾出时间)[^，。；！？]{0,8}(刷|看|逛|玩|听)")
+
+    /** 「别再刷短视频」是在劝他停——否定词开头的句式不能当成劝多刷。 */
+    private val NEG_BEFORE = listOf("别", "不要", "少", "不再", "莫", "勿", "停止")
+
+    private fun pushesMore(s: String): Boolean {
+        for (m in PUSH_MORE_RE.findAll(s)) {
+            val head = s.substring(maxOf(0, m.range.first - 3), m.range.first)
+            if (NEG_BEFORE.any { head.contains(it) }) continue
+            return true
+        }
+        return false
+    }
 
     private fun looksClean(s: String): Boolean =
         !LABEL_RE.containsMatchIn(s) &&
@@ -588,6 +664,51 @@ object DailySummary {
     }
 
     /**
+     * 同类对标：把「可以摆在一起说的两件事」配好。
+     * 只配**同类**（应用对应用、时段对时段、主题对主题），因为模型自己配的时候
+     * 会拿一个应用去比一类内容（实测「不是微信，是剧集：17 次王者荣耀」）。
+     */
+    private fun comparePairs(
+        apps: List<UsageStatsHelper.DayUsage.AppUsage>,
+        slotNames: List<String>,
+        slots: LongArray,
+        themes: List<Pair<String, Int>>,
+        prevSpend: Double,
+        noRecordToday: Boolean,
+    ): List<String> {
+        val out = ArrayList<String>()
+        if (apps.size >= 2) {
+            out.add(
+                "应用对应用：" + apps[0].name + " " + dur(apps[0].ms) + "（打开 ${apps[0].opens} 次） vs " +
+                    apps[1].name + " " + dur(apps[1].ms) + "（打开 ${apps[1].opens} 次）"
+            )
+        }
+        // 时间最长 vs 打开最勤：这条最像「找」和「读」的对照。
+        val busiest = apps.filter { it.opens > 0 }.maxByOrNull { it.opens }
+        if (apps.isNotEmpty() && busiest != null && busiest.pkg != apps[0].pkg && busiest.opens >= 10) {
+            out.add(
+                "时长对次数：时间最长的是 " + apps[0].name + "（" + dur(apps[0].ms) + "／只开了 ${apps[0].opens} 次），" +
+                    "打开最勤的是 " + busiest.name + "（${busiest.opens} 次／共 " + dur(busiest.ms) + "）"
+            )
+        }
+        val alive = slots.withIndex().filter { it.value > 0 }
+        if (alive.size >= 2) {
+            val hi = alive.maxByOrNull { it.value }!!
+            val lo = alive.minByOrNull { it.value }!!
+            if (hi.index != lo.index) {
+                out.add("时段对时段：" + slotNames[hi.index] + " " + dur(hi.value) + " vs " + slotNames[lo.index] + " " + dur(lo.value))
+            }
+        }
+        if (themes.size >= 2) {
+            out.add("主题对主题：" + themes[0].first + " " + themes[0].second + " 条 vs " + themes[1].first + " " + themes[1].second + " 条")
+        }
+        if (noRecordToday && prevSpend > 0) {
+            out.add("消费对消费：昨天 ¥" + "%.2f".format(prevSpend) + " vs 今天 ¥0.00（一笔没记）")
+        }
+        return out
+    }
+
+    /**
      * 从看过的内容标题里归纳主题词。
      * 小模型不会自己从 8 条标题里归纳——实测两轮提示词（连「必须点名今天看到的内容」都写死了）
      * 都没引用过任何标题，所以把「归纳」这段交给规则：先按关键词把标题归到几个主题，
@@ -604,11 +725,14 @@ object DailySummary {
         return hits.entries.sortedByDescending { it.value }.take(3).map { it.key to it.value }
     }
 
+    /** 「钱」这一类的关键词：主题归纳用它，数「今天刷到几条花钱内容」也用它。 */
+    private val MONEY_KEYS = listOf(
+        "元", "收入", "理财", "基金", "股票", "省钱", "装机", "消费", "价格",
+        "优惠", "618", "二手", "赚钱", "副业", "预算",
+    )
+
     private val THEME_KEYS: List<Pair<String, List<String>>> = listOf(
-        "钱" to listOf(
-            "元", "收入", "理财", "基金", "股票", "省钱", "装机", "消费", "价格",
-            "优惠", "618", "二手", "赚钱", "副业", "预算",
-        ),
+        "钱" to MONEY_KEYS,
         "本事" to listOf(
             "AI", "ai", "模型", "教程", "学习", "知识", "原理", "科普", "代码",
             "编程", "概念", "课程", "技能", "方法",

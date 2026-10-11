@@ -173,6 +173,18 @@ data class ModelInfo(
                 hfRepo = "Qwen/Qwen3-4B-GGUF",
                 msRepo = "Qwen/Qwen3-4B-GGUF"
             ),
+            // Qwen3-8B: same family as the 4B, one size up. Added for Trace's
+            // "quality first, speed doesn't matter" requirement: the summary is
+            // written once a day in the background, so a 4-5 minute generation
+            // is acceptable if the Chinese is better. Text-only (no mmproj).
+            ModelInfo(
+                id = "qwen3-8b",
+                displayName = "Qwen3-8B (Q4_K_M)",
+                descriptionResName = "model_desc_qwen3_8b",
+                ggufFileName = "Qwen3-8B-Q4_K_M.gguf",
+                hfRepo = "Qwen/Qwen3-8B-GGUF",
+                msRepo = "Qwen/Qwen3-8B-GGUF"
+            ),
             // VoxCPM2 — text-to-speech model, ~2B params, 48kHz output.
             // Two GGUF files: a BaseLM (the MiniCPM-4 based language model)
             // and an Acoustic bundle (FSQ + ResidualLM + LocEnc + LocDiT +
