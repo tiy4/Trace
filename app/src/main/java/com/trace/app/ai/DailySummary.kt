@@ -59,29 +59,43 @@ object DailySummary {
 """
 
     /**
-     * 端侧「补两句」阶段的系统指令。
+     * 端侧「写解读」阶段的系统指令（v3：四字段 + 允许引用数字）。
      *
-     * 事实段已经由代码写好（见 [factsText]），模型只做加法：
-     * 很多小模型一旦拿到完整数据块就会忍不住重写、改数字、编金额，
-     * 所以这里明确禁止它碰数字、只允许它接在事实后面说人话。
+     * 事实段由代码写好（见 [factsText]），这里只要「事实之外的意思」：
+     * 小模型自己从一堆数字里挑重点会写成流水账，所以「挑事实」在代码里做完，
+     * 模型负责**把事实读成人话**——对照、点名、指模式。
+     *
+     * v2 曾禁止它写任何数字，结果正好把「不是看是打：王者 1 小时 41 分占三分之一」
+     * 这类最像样的句子也堵死了；改成「数字只能从输入里原样引用」，
+     * 再由 [numbersOk] 在代码里逐个数校验（编一个不存在的数字就丢弃该字段）。
      */
-    const val POLISH_INSTRUCTION: String = """你是一位贴身的生活观察助手。用户会给你今天的行为事实，事实已经写好了，你只做两件事：点出今天最值得注意的一点，再给一条明天能做的建议。
+    const val POLISH_INSTRUCTION: String = """你是一位贴身的生活观察助手。用户会给你今天的原始事实（屏幕时间、各应用时长与打开次数、今天看到的内容标题、消费记录）。
 
-输出格式：只输出一个 JSON 对象，键固定为 yihua 和 jianyi，两个值都是中文句子。
-{"yihua":"……","jianyi":"……"}
+输出格式：只输出一个 JSON 对象，四个键固定为 yihua、liangdian、guanzhu、jianyi：
+{"yihua":"一句话","liangdian":["亮点1","亮点2"],"guanzhu":["值得留意的事"],"jianyi":"明天做的一件事"}
 
-规则：
-- 只输出这个 JSON 本身。前后不要解释、不要注释、不要用代码块包裹。
-- yihua 不超过 40 个字，jianyi 不超过 40 个字。
-- 不许出现任何数字、金额、次数、时长，事实里已经有了。
-- 不许复述事实里的句子，不许编造事实里没出现过的应用、内容或事情。
-- 不许用「好：」「坏：」「观察：」「建议：」这类标签开头，直接从第一个字开始写句子。
-- 不许写「注意休息」「合理安排时间」「利用碎片时间」「保持良好习惯」这类放之四海皆准的空话，也不要反过来劝他多刷。
-- 不许解释你的思路、不许评价这些要求、不许输出括号注释。
+硬性要求（逐条满足）：
+1. liangdian 写 2-4 条，每条不超过 60 字，且必须同时做到：
+   - 至少一条用「不是 A，是 B：具体数据」这种把两件事摆在一起的说法，A 和 B 都得是事实里出现过的应用、内容或行为；
+   - 至少一条用「」引出事实里【今天的主题】给出的一个主题词，说清今天看的东西集中在什么主题上；
+   - 每条都要带上事实里给出的数字。
+2. guanzhu 写 0-3 条，每条不超过 60 字，指出矛盾、盲区或反常；
+   事实里出现「平均每次 N 秒」且 N 小于 10 时，必须有一条说破这是在「扫」不是在看。
+3. jianyi 写一条明天能做的，不超过 40 字，必须点名事实里的一个应用或一条内容。
+4. yihua 一句话概括今天，不超过 40 字，不要复述数字。
+
+数字与事实：
+- 数字只能照抄事实里已经给出的，不许换算、不许四舍五入、不许新造。
+- 不许编造事实里没有的应用、内容、金额、事情。
+- 不要整句复述事实，要给出事实之外的意思（为什么值得注意、两边对比说明了什么）。
+- 不许写「注意休息」「合理安排时间」「保持良好习惯」这类空话，也不要反过来劝他多刷。
+
+格式与语气：
+- 只输出 JSON 本身：不要解释、不要注释、不要代码块，不要用「好：」「观察：」这类标签开头。
 - 语气像懂主人的朋友：可以说实话、可以轻微调侃，但不要说教。"""
 
-    /** 补两句阶段的上限（80 字 ≈ 120-160 token，留点余量）。 */
-    private const val POLISH_TOKENS = 200
+    /** 写解读阶段的上限（四字段合计 250 字左右 ≈ 200 token，留余量）。 */
+    private const val POLISH_TOKENS = 320
 
     data class Result(
         val ok: Boolean,
@@ -151,7 +165,16 @@ object DailySummary {
         } else {
             sb.appendLine(
                 "【应用 Top】" + topApps.joinToString(" · ") { a ->
-                    a.name + " " + dur(a.ms) + if (a.opens > 0) "（打开 ${a.opens} 次）" else ""
+                    var s = a.name + " " + dur(a.ms)
+                    if (a.opens > 0) s += "（打开 ${a.opens} 次）"
+                    // 占比先在代码里算好：让模型做除法，它会算错或编一个数。
+                    if (sys.totalMs > 0) {
+                        val share = (a.ms * 100 / sys.totalMs).toInt()
+                        if (share >= 10) s += "占屏幕时间 $share%"
+                    }
+                    // 打开很多次、每次都很短 = 在「扫」而不是在「读」；数字算好，判断留给模型。
+                    if (a.opens >= 20 && a.ms > 0) s += "，平均每次 ${a.ms / a.opens / 1000} 秒"
+                    s
                 }
             )
         }
@@ -186,13 +209,23 @@ object DailySummary {
             val contentEvents = db.contentEventsInRange(start, end, limit = 200)
             // 样本只取内容事件里的真实标题（抖音/小红书这类），
             // 别再拿 activity_log 的界面文本——那是别的 App 自己的文案，纯噪声。
+            // 条数从 3 提到 8：只给 2-3 条时模型写不出「今天在看什么」这类归纳，
+            // 而「内容的主题」正是总结里最有信息量的部分。
             val samples = contentEvents
                 .map { (if (it.author.isBlank()) "" else it.author + "：") + it.title }
                 .filter { it.length > 6 }
-                .map { it.take(40) }
+                .map { it.take(60) }
                 .distinct()
-                .take(3)
-            if (samples.isNotEmpty()) sb.appendLine("【看到的内容样本】" + samples.joinToString(" / "))
+                .take(8)
+            if (samples.isNotEmpty()) {
+                sb.appendLine("【今天看到的内容】（标题原文，判断他在看什么用）")
+                samples.forEachIndexed { i, t -> sb.appendLine("${i + 1}. $t") }
+                val themes = themesOf(samples)
+                if (themes.isNotEmpty()) {
+                    sb.appendLine("【今天的主题】（代码已从上面标题归纳好，正文必须引用其中一个）")
+                    sb.appendLine(themes.joinToString(" / ") { "${it.first}（${it.second} 条）" })
+                }
+            }
 
             val liked = contentEvents
                 .filter { it.event == "LIKE" || it.event == "SAVE" }
@@ -416,49 +449,96 @@ object DailySummary {
             return Result(false, day, "", "local", model, stats, "今天的数据太少，没法总结")
         }
 
-        val ask = "今天的全部事实（已经写好了）：\n" + facts +
-            "\n\n按格式要求输出那个 JSON。"
+        // 整块数据都喂给它。早期只喂「5 条看点」，结果内容标题、打开次数、消费记录
+        // 明明在 stats 里却没进模型眼睛 → 它当然写不出「在看什么」。
+        val ask = "今天的全部事实：\n" + stats + "\n\n按格式要求输出那个 JSON。"
         val r = VlmEngine.ask(ctx, ask, maxTokens = POLISH_TOKENS, instruction = POLISH_INSTRUCTION)
-        val (oneRaw, adviceRaw) = if (r.ok) parsePolish(clean(r.answer)) else ("" to "")
+        val p = if (r.ok) parsePolish(clean(r.answer)) else Polish.EMPTY
 
-        val one = if (oneRaw.isNotBlank() && oneRaw.length <= 60 &&
-            looksClean(oneRaw) && !echoesFact(oneRaw, facts) && grounded(oneRaw, appNames)
-        ) oneRaw else ""
-        // 建议这一侧**不能**用 grounded：建议天然是「明天怎样」，本来就未必出现今天的行为词，
-        // 实测把「早睡前尝试放下手机」这类正常建议全滤掉了。这里只拦两件真事：
-        // 抄事实段 / 编出今天没有的钱（早期编过「128 元」）。
-        val advice = if (adviceRaw.isNotBlank() && adviceRaw.length <= 80 &&
-            looksClean(adviceRaw) && !echoesFact(adviceRaw, facts) && !inventsMoney(adviceRaw, facts)
-        ) adviceRaw else ""
+        // 四道闸：别抄事实段、别编数字、别编引号里的内容。
+        // 注意：亮点早先还要求「必须锚在真实应用/行为上」，实测把好句子也误杀了
+        // ——模型写「今天看的都是剧：…」时没点名应用也没带数字，但它引的主题词
+        // 是输入里【今天的主题】给的，本来是对的 → 改成只靠 数字/引号 两道硬闸。
+        fun accept(s: String, max: Int, needGround: Boolean): Boolean =
+            s.isNotBlank() && s.length <= max && looksClean(s) &&
+                !echoesFact(s, facts) && numbersOk(s, stats) && quotedOk(s, stats) &&
+                (!needGround || grounded(s, appNames))
 
-        val lines = mutableListOf(facts)
-        if (one.isNotBlank()) lines.add(one)
-        if (advice.isNotBlank()) lines.add(advice)
-        val text = lines.joinToString("\n")
-        val json = digestJson(one, advice)
-        // 模型没参与时如实标注，不冒名。
-        val modelName = if (one.isBlank() && advice.isBlank()) "本机统计" else model
+        /** 被哪道闸拦下的——不查日志就只能靠猜，这一行是给以后调提示词用的。 */
+        fun why(s: String, max: Int, needGround: Boolean): String = when {
+            s.isBlank() -> "空"
+            s.length > max -> "超长"
+            !looksClean(s) -> "像标签/元话"
+            echoesFact(s, facts) -> "抄事实段"
+            !numbersOk(s, stats) -> "数字对不上"
+            !quotedOk(s, stats) -> "引号里的内容不在输入里"
+            needGround && !grounded(s, appNames) -> "没锚点"
+            else -> "ok"
+        }
+
+        val one = p.yihua.takeIf { accept(it, 60, true) } ?: ""
+        val liang = p.liangdian.filter { accept(it, 90, false) }.take(4)
+        val guan = p.guanzhu.filter { accept(it, 90, false) }.take(3)
+        val advice = p.jianyi.takeIf { accept(it, 60, false) } ?: ""
+        android.util.Log.i(
+            "TraceVlm",
+            "闸门 liang=" + p.liangdian.joinToString(" | ") { why(it, 90, false) } +
+                " guan=" + p.guanzhu.joinToString(" | ") { why(it, 90, false) } +
+                " yihua=" + why(p.yihua, 60, true) + " jianyi=" + why(p.jianyi, 60, false) +
+                " raw=" + p.liangdian.joinToString(";") + " ~~ " + p.guanzhu.joinToString(";") + " ~~ " + p.jianyi
+        )
+        val modelUsed = one.isNotBlank() || liang.isNotEmpty() || guan.isNotEmpty() || advice.isNotBlank()
+
+        // 事实段永远在最前面：数字全部来自本机统计，模型碰不到；
+        // 后面才是模型的解读（它写崩了就只交付事实段，model 如实标「本机统计」）。
+        val text = if (!modelUsed) facts else buildString {
+            append(facts)
+            if (one.isNotBlank()) append("\n").append(one)
+            liang.forEach { append("\n· ").append(it) }
+            guan.forEach { append("\n留意：").append(it) }
+            if (advice.isNotBlank()) append("\n明天：").append(advice)
+        }
+        val json = digestJson(one, liang, guan, advice)
+        val modelName = if (modelUsed) model else "本机统计"
         db.addDigest(day, "local", modelName, text, stats, json)
         return Result(true, day, text, "local", modelName, stats, json = json)
     }
 
-    /** 存库用的字段化总结：{ "yihua":…, "jianyi":…, "liangdian":[…], "guanzhu":[…] }。 */
-    private fun digestJson(one: String, advice: String): String {
-        val sb = StringBuilder("{")
-        sb.append("\"yihua\":").append(JSONObject.quote(one))
-        sb.append(",\"jianyi\":").append(JSONObject.quote(advice))
-        sb.append("}")
-        return sb.toString()
+    /** 模型吐出来的四个字段。 */
+    data class Polish(
+        val yihua: String,
+        val liangdian: List<String>,
+        val guanzhu: List<String>,
+        val jianyi: String,
+    ) {
+        companion object {
+            val EMPTY = Polish("", emptyList(), emptyList(), "")
+        }
+    }
+
+    /** 存库用的字段化总结：{ "yihua":…, "liangdian":[…], "guanzhu":[…], "jianyi":… }。 */
+    private fun digestJson(one: String, liang: List<String>, guan: List<String>, advice: String): String =
+        "{\"yihua\":" + JSONObject.quote(one) +
+            ",\"liangdian\":" + jsonArrayOf(liang) +
+            ",\"guanzhu\":" + jsonArrayOf(guan) +
+            ",\"jianyi\":" + JSONObject.quote(advice) + "}"
+
+    private fun jsonArrayOf(xs: List<String>): String =
+        "[" + xs.joinToString(",") { JSONObject.quote(it) } + "]"
+
+    private fun jsonStrings(o: JSONObject, key: String): List<String> {
+        val a = o.optJSONArray(key) ?: return emptyList()
+        return (0 until a.length()).mapNotNull { i -> a.optString(i).trim().takeIf { it.isNotBlank() } }
     }
 
     /**
-     * 从模型输出里抠出 yihua / jianyi。
+     * 从模型输出里抠出四个字段。
      *
-     * 小模型三种坏输出都在这里兜住：被 ```json 围栏包住、前后带解释、抄了模板里的标签
+     * 小模型的坏输出都在这里兜住：被 ```json 围栏包住、前后带解释、抄了模板里的标签
      * （实测 MiniCPM5-2B 会把 few-shot 的「好：」当句子开头照抄，所以提示词里已经不放假例子了）。
      */
-    private fun parsePolish(raw: String): Pair<String, String> {
-        if (raw.isBlank()) return "" to ""
+    private fun parsePolish(raw: String): Polish {
+        if (raw.isBlank()) return Polish.EMPTY
         var s = raw.trim()
         if (s.startsWith("```")) {
             s = s.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -468,9 +548,14 @@ object DailySummary {
         if (a >= 0 && b > a) s = s.substring(a, b + 1)
         return try {
             val o = JSONObject(s)
-            o.optString("yihua").trim() to o.optString("jianyi").trim()
+            Polish(
+                o.optString("yihua").trim(),
+                jsonStrings(o, "liangdian"),
+                jsonStrings(o, "guanzhu"),
+                o.optString("jianyi").trim(),
+            )
         } catch (t: Throwable) {
-            "" to ""
+            Polish.EMPTY
         }
     }
 
@@ -483,16 +568,61 @@ object DailySummary {
             !s.contains("无法生成") && !s.contains("违反") && !s.contains("指令")
 
     /**
-     * 判断这句话是不是在讲今天真发生过的事：至少要命中一个真实应用名或一个行为词。
+     * 判断这句话是不是在讲今天真发生过的事：至少要命中一个真实应用名、一个行为词，或一个真实数字。
      * 命中不了就认为它在编（实测编出过「早起第一杯水」「把咖啡换成薄荷茶」）。
      */
     private fun grounded(s: String, appNames: List<String>): Boolean =
-        (appNames + BEHAVIOR_WORDS).any { it.length >= 2 && s.contains(it) }
+        (appNames + BEHAVIOR_WORDS).any { it.length >= 2 && s.contains(it) } ||
+            Regex("\\d").containsMatchIn(s)
 
-    /** 今天没有钱的记录时，建议里就不该冒出金额（实测编过「晚上 10 点那笔 128 元」）。 */
-    private fun inventsMoney(s: String, facts: String): Boolean =
-        (s.contains("元") || s.contains("块") || s.contains("¥")) &&
-            !(facts.contains("元") || facts.contains("¥"))
+    /**
+     * 输出里的每个阿拉伯数字都必须在输入里原样出现过——数字只能引用，不能自造。
+     * 早期的「不许写任何数字」太狠，把「占三分之一」这类最像样的句子也堵死了；
+     * 改成放行 + 逐个数校验：编一个今天不存在的数（比如没有的 128 元）就丢掉该字段。
+     */
+    private fun numbersOk(s: String, input: String): Boolean {
+        // 必须按「数字令牌」逐个比对，不能用 substring：
+        // 实测放过过假的「减少到 20 次以下」——因为输入里的日期 2026 含子串 "20"。
+        val allowed = Regex("\\d+(?:\\.\\d+)?").findAll(input).map { it.value }.toSet()
+        return Regex("\\d+(?:\\.\\d+)?").findAll(s).all { it.value in allowed }
+    }
+
+    /**
+     * 从看过的内容标题里归纳主题词。
+     * 小模型不会自己从 8 条标题里归纳——实测两轮提示词（连「必须点名今天看到的内容」都写死了）
+     * 都没引用过任何标题，所以把「归纳」这段交给规则：先按关键词把标题归到几个主题，
+     * 再把「钱（3 条）」这样的结论喂回去让它引用。归类与计数由代码保证，模型只负责说人话。
+     */
+    private fun themesOf(titles: List<String>): List<Pair<String, Int>> {
+        if (titles.isEmpty()) return emptyList()
+        val hits = LinkedHashMap<String, Int>()
+        for (t in titles) {
+            for ((theme, keys) in THEME_KEYS) {
+                if (keys.any { t.contains(it) }) hits[theme] = (hits[theme] ?: 0) + 1
+            }
+        }
+        return hits.entries.sortedByDescending { it.value }.take(3).map { it.key to it.value }
+    }
+
+    private val THEME_KEYS: List<Pair<String, List<String>>> = listOf(
+        "钱" to listOf(
+            "元", "收入", "理财", "基金", "股票", "省钱", "装机", "消费", "价格",
+            "优惠", "618", "二手", "赚钱", "副业", "预算",
+        ),
+        "本事" to listOf(
+            "AI", "ai", "模型", "教程", "学习", "知识", "原理", "科普", "代码",
+            "编程", "概念", "课程", "技能", "方法",
+        ),
+        "吃" to listOf("美食", "探店", "吃", "餐厅", "菜", "牛河", "做饭", "食谱", "外卖", "零食"),
+        "剧" to listOf("短剧", "电视剧", "电影", "综艺", "直播", "解说", "集"),
+        "玩" to listOf("游戏", "王者", "攻略", "上分", "评测", "开箱"),
+    )
+
+    /** 引号里点名的内容/应用必须在输入里出现过，防止编出没看过的视频。 */
+    private val QUOTED_RE = Regex("[「『“\"]([^」』”\"]{2,24})[」』”\"]")
+
+    private fun quotedOk(s: String, input: String): Boolean =
+        QUOTED_RE.findAll(s).all { input.contains(it.groupValues[1]) }
 
     private val BEHAVIOR_WORDS = listOf(
         "屏幕时间", "短视频", "视频", "点赞", "收藏", "取消点赞", "凌晨", "深夜", "上午", "下午",

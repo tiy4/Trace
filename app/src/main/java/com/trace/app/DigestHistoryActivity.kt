@@ -219,7 +219,7 @@ class DigestHistoryActivity : AppCompatActivity() {
     private fun writeToday() {
         val btn = findViewById<Button>(R.id.btnDayWrite)
         btn.isEnabled = false
-        btn.text = "正在写…（端侧模型独占，约 1 分钟）"
+        btn.text = "正在写…（端侧模型独占，约 1-3 分钟）"
         scope.launch {
             val r = withContext(Dispatchers.IO) {
                 DailySummary.generate(this@DigestHistoryActivity, db, force = true)

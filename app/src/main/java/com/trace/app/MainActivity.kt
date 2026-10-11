@@ -440,9 +440,9 @@ class MainActivity : AppCompatActivity() {
         if (d == null) {
             tv.text = "今天还没有总结。"
             meta.text = if (db.digestCount() > 0) {
-                "熄屏充电时会自动写一份（端侧模型，约 1 分钟）· 历史留档 ${db.digestCount()} 份"
+                "熄屏充电时会自动写一份（端侧模型，约 1-3 分钟）· 历史留档 ${db.digestCount()} 份"
             } else {
-                "熄屏充电时会自动写一份（端侧模型，约 1 分钟）"
+                "熄屏充电时会自动写一份（端侧模型，约 1-3 分钟）"
             }
             btn.text = "写今天总结"
         } else {
