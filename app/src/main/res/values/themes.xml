@@ -17,11 +17,11 @@
         <item name="colorPrimaryContainer">@color/brand_container</item>
         <item name="colorOnPrimaryContainer">@color/on_brand_container</item>
 
-        <!-- 次色（暖琥珀，用于深夜冲动等提醒） -->
-        <item name="colorSecondary">@color/amber_500</item>
-        <item name="colorOnSecondary">@color/on_amber_container</item>
-        <item name="colorSecondaryContainer">@color/amber_container</item>
-        <item name="colorOnSecondaryContainer">@color/on_amber_container</item>
+        <!-- 次色：给单选/复选/滑块用，跟随品牌色（琥珀只做「深夜冲动」语义色，见 colorTertiary） -->
+        <item name="colorSecondary">@color/brand_500</item>
+        <item name="colorOnSecondary">@color/on_brand</item>
+        <item name="colorSecondaryContainer">@color/brand_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_brand_container</item>
         <item name="colorTertiary">@color/amber_500</item>
         <item name="colorTertiaryContainer">@color/amber_container</item>
         <item name="colorOnTertiaryContainer">@color/on_amber_container</item>

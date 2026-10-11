@@ -55,6 +55,21 @@ object VlmEngine {
     /** 空闲多久后释放模型（毫秒）。 */
     private const val IDLE_UNLOAD_MS = 120_000L
 
+    /** 聊天单轮生成长度上限（token）。本地 2.4 GB 视觉模型，给太长会等很久。 */
+    private const val CHAT_MAX_TOKENS = 320
+
+    /**
+     * 聊天页的「系统指令」。
+     *
+     * 同样不能走原生 `processSystemPrompt()`（见 [INSTRUCTION] 的崩溃注释），
+     * 由调用方拼进用户提示词最前面。这里只写角色与纪律，数据由 ChatActivity 拼。
+     */
+    private const val CHAT_INSTRUCTION =
+        "你是「Trace」这个 Android App 内置的助手。Trace 在本机记录用户的应用使用行为和消费流水，" +
+            "下面的数据都是真实的。请只依据这些数据用中文回答用户的问题：" +
+            "说人话、给出具体数字和时间、不要编造；数据不够就直说不知道。" +
+            "回答控制在 200 字以内，不要用 Markdown 标题。\n\n"
+
     /** 等待 native 库异步加载完成的上限。 */
     private const val INIT_TIMEOUT_MS = 20_000L
 
@@ -147,6 +162,67 @@ object VlmEngine {
             Log.e(TAG, "analyze failed", t)
             lastSummary = "失败：${t.message}"
             VlmResult(false, s, loadMs, prefillMs, genMs, "", t.message ?: t.toString())
+        } finally {
+            busy = false
+            gate.unlock()
+            scheduleIdleUnload()
+        }
+    }
+
+    /**
+     * 纯文本对话：聊天页的**端侧大脑**。
+     *
+     * 与 [analyze] 的唯一区别是**不喂图**——只把拼好的提示词交给模型的语言主干。
+     * 视觉与文本共用同一个 native `processUserPrompt()`，所以「不调 prefillImage」就是纯文本推理。
+     * 聊天同样不能用 `setSystemPrompt()`（视觉路径下 SIGABRT，见 [INSTRUCTION] 注释），
+     * 因此系统指令拼进用户提示词，并把对话历史一并铺成纯文本。
+     *
+     * 慢是真的慢（首次要加载 2.4 GB 权重），所以：
+     * - 开跑前先 `clearContext()`，把上一轮视觉分析残留的图像上下文丢掉；
+     * - 限制生成长度（默认 320 token），避免用户对着气泡等一分多钟；
+     * - 通过 [onToken] 逐块回调，UI 可以边生成边显示。
+     */
+    suspend fun ask(
+        ctx: Context,
+        prompt: String,
+        maxTokens: Int = CHAT_MAX_TOKENS,
+        onToken: (String) -> Unit = {},
+    ): VlmResult {
+        val s = AdaptiveSlice.USER
+        if (!gate.tryLock()) {
+            return VlmResult(false, s, 0L, 0L, 0L, "", "busy")
+        }
+        busy = true
+        unloadJob?.cancel()
+        unloadJob = null
+
+        var loadMs = 0L
+        var genMs = 0L
+        return try {
+            loadMs = ensureLoaded(ctx)
+            val e = engine ?: throw IllegalStateException("引擎未就绪")
+            e.setEnableThinking(false)
+            e.clearContext()
+
+            val sb = StringBuilder()
+            val t2 = System.currentTimeMillis()
+            e.sendUserPrompt(CHAT_INSTRUCTION + prompt, maxTokens).collect { tok ->
+                if (tok.isNotEmpty()) {
+                    sb.append(tok)
+                    onToken(tok)
+                }
+            }
+            genMs = System.currentTimeMillis() - t2
+            val answer = sb.toString().trim()
+
+            resetContext(e)
+            lastSummary = "chat 生成=${genMs}ms 长度=${answer.length}"
+            Log.i(TAG, "$lastSummary answer=${answer.take(80)}")
+            VlmResult(true, s, loadMs, 0L, genMs, answer)
+        } catch (t: Throwable) {
+            Log.e(TAG, "ask failed", t)
+            lastSummary = "失败：${t.message}"
+            VlmResult(false, s, loadMs, 0L, genMs, "", t.message ?: t.toString())
         } finally {
             busy = false
             gate.unlock()

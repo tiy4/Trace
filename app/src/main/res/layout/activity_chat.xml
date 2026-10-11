@@ -34,9 +34,10 @@
                 android:textColor="@color/text" />
 
             <TextView
+                android:id="@+id/tvChatSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="已注入你的行为数据 · 云端大脑"
+                android:text="已注入你的行为数据 · 端侧模型"
                 android:textSize="10.5sp"
                 android:layout_marginTop="2dp"
                 android:textColor="@color/text_3" />
